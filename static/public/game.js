@@ -30,7 +30,7 @@ fetch('/static/public/games.json')
     }
   });
   */
-  fetch('/g/games.json')
+  fetch('/static/public/g/games.json')
   .then(response => response.json())
   .then(data => {
     const gamesContainer = document.querySelector('.games');
