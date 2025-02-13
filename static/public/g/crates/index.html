@@ -1,0 +1,1707 @@
+<!DOCTYPE html>
+<script>
+    /**
+     * Puzzle Crates!
+     * 
+     * A game for Clash of Code 2025 Round 2: Pairs.
+     * By Peter and honeyghost.
+     * 
+     * Credits:
+     *  - Bluebird for his P5.JS template.
+     *  - Peter for the game.
+     *  - honeyghost for the graphics and levels.
+     *  - Rpcarnahan for playtesting.
+     * 
+     * @How
+     * {
+     * You are the red block.
+     * You can move with WASD or arrow keys. R to restart a level.
+     * Your goal is the green-orange portal.
+     * The wooden crates are pushable. They can also hold gates and un-gates open.
+     * The buttons will open gates of their color when pushed, and close un-gates of that same color.
+     * Teleporters will move you to the other side of the other teleporter when entered.
+     * }
+     * 
+     * @Subscribe
+     * {
+     * Subscribe to Peter:
+     * https://www.khanacademy.org/computer-programming/subpage-new/5991346008145920
+     * 
+     * Subscribe to honeyghost:
+     * https://www.khanacademy.org/computer-programming/honeyghost-subpage/4863174664175616
+     * }
+     * 
+     * @Judges
+     * {
+     * This uses Bluebird's p5.js on KA template: https://www.khanacademy.org/computer-programming/p5js-on-ka/5684432689086464
+     * 
+     * The 'Wait five seconds, then hit reload.' error is because of the template, not my code.
+     * }
+    **/
+</script>
+<html>
+    <head>
+        <title>Puzzle Crates [GAME][CoC25]</title>
+        <style>
+            body {
+                margin:0;
+                overflow:hidden;
+            } /* No margin, or overflow */
+            * {
+                text-align:center;
+            }
+            .absCenter {
+                width:100%;
+                height:100%;
+                position:absolute;
+                top:0px;
+                left:0px;
+                align-content:center;
+                justify-content:center;
+            } /* Center some stuff */
+            .behind {
+                margin-top:10vh;
+                z-index: -1;
+            } /* Behind the canvas */
+            #defaultCanvas0 {
+                z-index: 10;
+            } /* The main p5js canvas */
+            #foregroundCanvas {
+                position:fixed;
+                top:0px;
+                left:0px;
+                z-index:11;
+                width:600px;
+                height:600px;
+            } /* The foreground 2d canvas */
+        </style>
+        <script src="https://cdn.jsdelivr.net/npm/p5@1.11.3/lib/p5.js"></script> <!-- Import P5.JS -->
+        <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script> <!-- Import JQuery -->
+        <script type>
+            var keys = {} // keys
+            var keysR = {} // keys that have been released on that frame
+            
+            $("html").on("keydown", k => {
+                keys[k.key.toString().toLowerCase()] = true
+                keys[k.keyCode] = true
+                k.preventDefault()
+            }) // add key listeners
+            $("html").on("keyup", k => {
+                delete keys[k.key.toString().toLowerCase()]
+                delete keys[k.keyCode]
+                keysR[k.key.toString().toLowerCase()] = true
+                keysR[k.keyCode] = true
+            })
+            
+            const pushAll = (arr, ...items) => items.forEach(e => arr.push(e)) // utility function to push all items to an array
+        </script> <!-- Utility -->
+        <script type>
+            class Vec {
+                constructor(x = 0, y = 0, z = 0) {
+                    this.x = Number(x)
+                    this.y = Number(y)
+                    this.z = Number(z)
+                } // Constructor. Z is completely optional always.
+                
+                add(v) {
+                    return this.set(Vec.add(this, ...arguments))
+                };
+                sub(v) {
+                    return this.set(Vec.sub(this, ...arguments))
+                }
+                mult(v) {
+                    return this.set(Vec.mult(this, ...arguments))
+                }
+                div(v) {
+                    return this.set(Vec.div(this, ...arguments))
+                }
+                invert() {
+                    return this.set(Vec.invert(this))
+                }
+                dot(v) {
+                    return Vec.dot(this, v)
+                }
+                cross(v) {
+                    return Vec.cross(this, v)
+                } // Doesn't change
+                magSq() {
+                    return Vec.magSq(this)
+                }
+                mag() {
+                    return Vec.mag(this)
+                }
+                norm() {
+                    return this.set(Vec.norm(this))
+                }
+                setMag(mag) {
+                    return this.set(Vec.setMag(this, mag))
+                }
+                limit(mag) {
+                    return this.set(Vec.limit(this, mag))
+                }
+                axisRot(axis, theta) {
+                    return this.set(Vec.axisRot(this, axis, theta))
+                }
+                rotate2D(theta) {
+                    return this.set(Vec.rotate2D(this, theta))
+                }
+                lerp(v, amount) {
+                    return this.set(Vec.lerp(this, v, amount))
+                } // Changes
+                distSq(v) {
+                    return Vec.distSq(this, v)
+                }
+                dist(v) {
+                    return Vec.dist(this, v)
+                }
+                isEqual(v) {
+                    return Vec.isEqual(this, v)
+                }
+                round() {
+                    return this.set(Vec.round(this))
+                }
+                
+                set(v) {
+                    if(v instanceof Vec) {
+                        this.x = v.x
+                        this.y = v.y
+                        this.z = v.z
+                    } else if(typeof v === "number") {
+                        this.x = arguments[0] ?? this.x
+                        this.y = arguments[1] ?? this.y
+                        this.z = arguments[2] ?? this.z
+                    }
+                    
+                    return this
+                } // Sets the vector to 'v', or 1 - 3 numbers. Omitted numbers will default to the original numbers.
+                clone() {
+                    return new Vec(this.x, this.y, this.z);
+                } // Returns a clone of the vector.
+                asP5() {
+                    return Vec.asP5(this)
+                }
+                
+                // The static functions will NEVER change the original, only returning the new Vec.
+                static add(v1, v2) {
+                    if(v2 instanceof Vec) {
+                        return new Vec(v1.x+v2.x, v1.y+v2.y, v1.z+v2.z)
+                    } else if(typeof v2 === "number") {
+                        return new Vec(v1.x+arguments[1] ?? 0, v1.y+arguments[2] ?? 0, v1.z+arguments[3] ?? 0)
+                    }
+                } // Adds two vectors or a vector and 1 - 3 numbers.
+                static sub(v1, v2) {
+                    if(v2 instanceof Vec) {
+                        return new Vec(v1.x-v2.x, v1.y-v2.y, v1.z-v2.z)
+                    } else if(typeof v2 === "number") {
+                        return new Vec(v1.x-arguments[1] ?? 0, v1.y-arguments[2] ?? 0, v1.z-arguments[3] ?? 0)
+                    }
+                } // Subtracts two vectors or a vector and 1 - 3 numbers.
+                static mult(v1, v2) {
+                    if(v2 instanceof Vec) {
+                        return new Vec(v1.x*v2.x, v1.y*v2.y, v1.z*v2.z)
+                    } else if(typeof v2 === "number") {
+                        return new Vec(v1.x*v2, v1.y*v2, v1.z*v2)
+                    }
+                } // Multiplies two vectors or a vector and a number.
+                static div(v1, v2) {
+                    if(v2 instanceof Vec) {
+                        return new Vec(v1.x/v2.x, v1.y/v2.y, v1.z/v2.z)
+                    } else if(typeof v2 === "number") {
+                        return new Vec(v1.x/v2, v1.y/v2, v1.z/v2)
+                    }
+                } // Divides two vectors or a vector and a number.
+                static invert(v) {
+                    return new Vec(-v.x, -v.y, -v.z)
+                } // Negates a vector.
+                static dot(v1, v2) {
+                    return v1.x*v2.x + v1.y*v2.y + v1.z*v2.z
+                } // Vector dot product.
+                static cross(v1, v2) {
+                    return new Vec(v1.y * v2.z - v2.y * v1.z, v1.z * v2.x - v2.z * v1.x, v1.x * v2.y - v2.x * v1.y)
+                } // Vector cross product.
+                static magSq(v) {
+                    return v.x*v.x + v.y*v.y + v.x*v.z
+                } // Magnitude squared.
+                static mag(v) {
+                    return sqrt(Vec.magSq(v))
+                } // Magnitude.
+                static norm(v) {
+                    return v.clone().div(v.clone().mag())
+                } // Normalize a vector.
+                static setMag(v, mag) {
+                    return v.clone().norm().mult(mag)
+                } // Set the magnitude of a vector.
+                static limit(v, mag) {
+                    if(v.mag() > mag) {
+                        return v.clone().setMag(mag)
+                    } else {
+                        return v.clone()
+                    }
+                } // Limit a vector's magnitude to a number.
+                static axisRot(v, axis, theta) {
+                    var ca = Math.cos(theta), sa = Math.sin(theta), t=1-ca, x=axis.x, y=axis.y, z=axis.z, before=v.clone()
+                    return new Vec(new Vec(ca + x*x*t, x*y*t - z*sa, x*z*t + y*sa).dot(before), new Vec(x*y*t + z*sa, ca + y*y*t, y*z*t - x*sa).dot(before), new Vec(z*x*t - y*sa, z*y*t + x*sa, ca + z*z*t).dot(before))
+                } // Rotate a vector around an axis vector by theta. Useful in 3D.
+                static rotate2D(v, theta) {
+                    return Vec.axisRot(v, new Vec(0, 0, 1), theta)
+                } // Rotate a vector in 2D by theta. The vector axis in 2D are x and y.
+                static lerp(v1, v2, amount) {
+                    let lerp = (a, b, amnt) => a+(b-a)*amnt
+                    return new Vec(lerp(v1.x, v2.x, amount), lerp(v1.y, v2.y, amount), lerp(v1.z, v2.z, amount))
+                } // Lerp two vectors.
+                static distSq(v1, v2) {
+                    return Math.pow(v2.x-v1.x, 2) + Math.pow(v2.y-v1.y, 2) + Math.pow(v2.z-v1.z, 2)
+                } // Distance squared between two vectors.
+                static dist(v1, v2) {
+                    return Math.sqrt(Vec.distSq(v1, v2))
+                } // Distance between two vectors.
+                static asP5(v) {
+                    return new p5.Vector(v.x, v.y, v.z)
+                }
+                static isEqual(v1, v2) {
+                    return v1.x===v2.x&&v1.y===v2.y&&v1.z===v2.z
+                }
+                static round(v) {
+                    return new Vec(round(v.x), round(v.y), round(v.z))
+                }
+                
+                toString() {
+                    return "Vec: ("+this.x+", "+this.y+", "+this.z+")"
+                } // Custom toString.
+            }
+        </script> <!-- My Vector Library ported from PJS into ES6 -->
+        <script type>
+            const PALETTE = {
+                "a": [113, 0, 81],
+                "b": [154, 0, 110],
+                "c": [188, 23, 124],
+                "d": [218, 89, 181],
+                "e": [102, 12, 0],
+                "f": [177, 20, 0],
+                "g": [216, 75, 57],
+                "h": [255, 145, 131],
+                "i": [2, 66, 0],
+                "j": [4, 132, 0],
+                "k": [58, 177, 54],
+                "l": [128, 205, 126],
+                "m": [181, 89, 9],
+                "n": [220, 111, 14],
+                "o": [254, 175, 0],
+                "p": [252, 200, 83],
+                "q": [23, 23, 30],
+                "r": [41, 41, 49],
+                "s": [217, 220, 255],
+                "t": [255, 255, 255],
+                "u": [255, 206, 153],
+                "v": [254, 182, 106],
+                "w": [205, 136, 63],
+                "x": [152, 104, 53],
+                "y": [105, 65, 24],
+                "z": [70, 42, 12],
+            } // Palette and pixel art by honeyghost
+            const RESOLUTION = 5 // Size of pixels
+            var images = {}, src = {
+                player: [
+                    "rrrrrrrrrrrrrrrrrrrr",
+                    "rggggggggggggggggggr",
+                    "rghhgggggggggggggggr",
+                    "rghggggggggggggggggr",
+                    "rggggggggggggggggggr",
+                    "rggggggggggggggggggr",
+                    "rggggggggggggggggggr",
+                    "rggggggggggggggggggr",
+                    "rggggggggggggggggggr",
+                    "rggggggggggggggggggr",
+                    "rggggggggggggggggggr",
+                    "rggggggggggggggggfgr",
+                    "rggggggggggggggggfgr",
+                    "rggggggggggggggggfgr",
+                    "rggggggggggggggggfgr",
+                    "rggggggggggggggggfgr",
+                    "rggggggggggggggggfgr",
+                    "rggggggggggfffffffgr",
+                    "rggggggggggggggggggr",
+                    "rrrrrrrrrrrrrrrrrrrr",
+                ],
+                basic: [
+                    "rrrrrrrrrrrrrrrrrrrr",
+                    "rttttttttttttttttttr",
+                    "rtsssssssssssssssstr",
+                    "rtsttttttttttttttstr",
+                    "rtststtttttttttststr",
+                    "rtsttttttttttttttstr",
+                    "rtsttttttttttttttstr",
+                    "rtsttttttttttttttstr",
+                    "rtsttttttttttttttstr",
+                    "rtsttttttttttttttstr",
+                    "rtsttttttttttttttstr",
+                    "rtsttttttttttttttstr",
+                    "rtsttttttttttttttstr",
+                    "rtsttttttttttttttstr",
+                    "rtsttttttttttttttstr",
+                    "rtststtttttttttststr",
+                    "rtsttttttttttttttstr",
+                    "rtsssssssssssssssstr",
+                    "rttttttttttttttttttr",
+                    "rrrrrrrrrrrrrrrrrrrr",
+                ],
+                lockedPinkGate: [
+                    "rrrrrrrrrrrrrrrrrrrr",
+                    "rccccccccccccccccccr",
+                    "rcddddcccccccccccccr",
+                    "rcdddccccccccccccccr",
+                    "rcddccccbbbbcccccccr",
+                    "rcdccccbbbbbbccccccr",
+                    "rcdcccbbbbbbbbcccccr",
+                    "rcccccbbbbbbbbcccccr",
+                    "rcccccbbbbbbbbcccccr",
+                    "rccccccbbbbbbccccccr",
+                    "rcccccccbbbbcccccccr",
+                    "rcccccccbbbbcccccccr",
+                    "rccccccbbbbbbccccccr",
+                    "rccccccbbbbbbccccccr",
+                    "rcccccbbbbbbbbccccbr",
+                    "rcccccbbbbbbbbccccbr",
+                    "rccccccccccccccccbbr",
+                    "rccccccccccccccccbbr",
+                    "rccccccccccccccbbbbr",
+                    "rrrrrrrrrrrrrrrrrrrr",
+                ],
+                lockedYellowGate: [
+                    "rrrrrrrrrrrrrrrrrrrr",
+                    "roooooooooooooooooor",
+                    "roppppooooooooooooor",
+                    "ropppoooooooooooooor",
+                    "roppoooonnnnooooooor",
+                    "ropoooonnnnnnoooooor",
+                    "ropooonnnnnnnnooooor",
+                    "rooooonnnnnnnnooooor",
+                    "rooooonnnnnnnnooooor",
+                    "roooooonnnnnnoooooor",
+                    "rooooooonnnnooooooor",
+                    "rooooooonnnnooooooor",
+                    "roooooonnnnnnoooooor",
+                    "roooooonnnnnnoooooor",
+                    "rooooonnnnnnnnoooonr",
+                    "rooooonnnnnnnnoooonr",
+                    "roooooooooooooooonnr",
+                    "roooooooooooooooonnr",
+                    "roooooooooooooonnnnr",
+                    "rrrrrrrrrrrrrrrrrrrr",
+                ],
+                lockedGreenGate: [
+                    "rrrrrrrrrrrrrrrrrrrr",
+                    "rkkkkkkkkkkkkkkkkkkr",
+                    "rkllllkkkkkkkkkkkkkr",
+                    "rklllkkkkkkkkkkkkkkr",
+                    "rkllkkkkjjjjkkkkkkkr",
+                    "rklkkkkjjjjjjkkkkkkr",
+                    "rklkkkjjjjjjjjkkkkkr",
+                    "rkkkkkjjjjjjjjkkkkkr",
+                    "rkkkkkjjjjjjjjkkkkkr",
+                    "rkkkkkkjjjjjjkkkkkkr",
+                    "rkkkkkkkjjjjkkkkkkkr",
+                    "rkkkkkkkjjjjkkkkkkkr",
+                    "rkkkkkkjjjjjjkkkkkkr",
+                    "rkkkkkkjjjjjjkkkkkkr",
+                    "rkkkkkjjjjjjjjkkkkjr",
+                    "rkkkkkjjjjjjjjkkkkjr",
+                    "rkkkkkkkkkkkkkkkkjjr",
+                    "rkkkkkkkkkkkkkkkkjjr",
+                    "rkkkkkkkkkkkkkkjjjjr",
+                    "rrrrrrrrrrrrrrrrrrrr",
+                ],
+                lockedRedGate: [
+                    "rrrrrrrrrrrrrrrrrrrr",
+                    "rggggggggggggggggggr",
+                    "rghhhhgggggggggggggr",
+                    "rghhhggggggggggggggr",
+                    "rghhggggffffgggggggr",
+                    "rghggggffffffggggggr",
+                    "rghgggffffffffgggggr",
+                    "rgggggffffffffgggggr",
+                    "rgggggffffffffgggggr",
+                    "rggggggffffffggggggr",
+                    "rgggggggffffgggggggr",
+                    "rgggggggffffgggggggr",
+                    "rggggggffffffggggggr",
+                    "rggggggffffffggggggr",
+                    "rgggggffffffffggggbr",
+                    "rgggggffffffffggggfr",
+                    "rggggggggggggggggffr",
+                    "rggggggggggggggggffr",
+                    "rggggggggggggggffffr",
+                    "rrrrrrrrrrrrrrrrrrrr",
+                ],
+                box: [
+                    "rrrrrrrrrrrrrrrrrrrr",
+                    "rzxxxxxxxxxxxxxxxxzr",
+                    "rxzxxxxxxxxxxxxxxzxr",
+                    "rxxzxxxxxxxxxxxxzxxr",
+                    "rxxxzzzzzzzzzzzzxxxr",
+                    "rxxxzyyyyzyyyyzzxxxr",
+                    "rxxxzyyyzyyyyzyzxxxr",
+                    "rxxxzyyzyyyyzyyzxxxr",
+                    "rxxxzyzyyyyzyyyzxxxr",
+                    "rxxxzzyyyyzyyyyzxxxr",
+                    "rxxxzyyyyzyyyyzzxxxr",
+                    "rxxxzyyyzyyyyzyzxxxr",
+                    "rxxxzyyzyyyyzyyzxxxr",
+                    "rxxxzyzyyyyzyyyzxxxr",
+                    "rxxxzzyyyyzyyyyzxxxr",
+                    "rxxxzzzzzzzzzzzzxxxr",
+                    "rxxzxxxxxxxxxxxxzxxr",
+                    "rxzxxxxxxxxxxxxxxzxr",
+                    "rzxxxxxxxxxxxxxxxxzr",
+                    "rrrrrrrrrrrrrrrrrrrr",
+                ],
+                buttonBase: [
+                    "rrrrrrrrrrrrrrrrrrrr",
+                    "rrssssssssssssssssrr",
+                    "rssssssssssssssssssr",
+                    "rssrssssssssssssrssr",
+                    "rssssssssssssssssssr",
+                    "rssssssssssssssssssr",
+                    "rssssssssssssssssssr",
+                    "rssssssssssssssssssr",
+                    "rssssssssssssssssssr",
+                    "rssssssssssssssssssr",
+                    "rssssssssssssssssssr",
+                    "rssssssssssssssssssr",
+                    "rssssssssssssssssssr",
+                    "rssssssssssssssssssr",
+                    "rssssssssssssssssssr",
+                    "rssssssssssssssssssr",
+                    "rssrsssssssssssrsssr",
+                    "rssssssssssssssssssr",
+                    "rrssssssssssssssssrr",
+                    "rrrrrrrrrrrrrrrrrrrr",
+                ],
+                
+                //Buttons are 16x16 instead of the usual 20x20. That means the size of their cubes should be 80 pixels, instead of 100.
+                pinkButton: [
+                    " rrrrrrrrrrrrrr",
+                    "rrccccccccbbbbrr",
+                    "rccdddddccccbbbr",
+                    "rcddddddcccccbbr",
+                    "rcddddddcccccbbr",
+                    "rcdddddcccccccbr",
+                    "rcddddccccccccbr",
+                    "rcdddcccccccccbr",
+                    "rcccccccccccccbr",
+                    "rccccccccccccbbr",
+                    "rbcccccccccccbbr",
+                    "rbcccccccccccbbr",
+                    "rbbcccccccccbbbr",
+                    "rbbbbccccbbbbbbr",
+                    "rrbbbbbbbbbbbbrr",
+                    " rrrrrrrrrrrrrr",
+                ],
+                yellowButton: [
+                    " rrrrrrrrrrrrrr ",
+                    "rroooooooonnnnrr",
+                    "roopppppoooonnnr",
+                    "roppppppooooonnr",
+                    "ropppppooooooonr",
+                    "roppppoooooooonr",
+                    "ropppooooooooonr",
+                    "rooooooooooooonr",
+                    "roooooooooooonnr",
+                    "rnooooooooooonnr",
+                    "rnooooooooooonnr",
+                    "rnnooooooooonnnr",
+                    "rnnnnoooonnnnnnr",
+                    "rrnnnnnnnnnnnnrr",
+                    " rrrrrrrrrrrrrr ",
+                ],
+                greenButton: [
+                    " rrrrrrrrrrrrrr ",
+                    "rrkkkkkkkkjjjjrr",
+                    "rkklllllkkkkjjjr",
+                    "rkllllllkkkkkjjr",
+                    "rkllllllkkkkkjjr",
+                    "rklllllkkkkkkkjr",
+                    "rkllllkkkkkkkkjr",
+                    "rklllkkkkkkkkkjr",
+                    "rkkkkkkkkkkkkkjr",
+                    "rkkkkkkkkkkkkjjr",
+                    "rjkkkkkkkkkkkjjr",
+                    "rjkkkkkkkkkkkjjr",
+                    "rjjkkkkkkkkkjjjr",
+                    "rjjjjkkkkjjjjjjr",
+                    "rrjjjjjjjjjjjjrr",
+                    " rrrrrrrrrrrrrr",
+                ],
+                redButton: [
+                    " rrrrrrrrrrrrrr ",
+                    "rrggggggggffffrr",
+                    "rgghhhhhggggfffr",
+                    "rghhhhhhgggggffr",
+                    "rghhhhhhgggggffr",
+                    "rghhhhhgggggggfr",
+                    "rghhhhggggggggfr",
+                    "rghhhgggggggggfr",
+                    "rgggggggggggggfr",
+                    "rggggggggggggffr",
+                    "rfgggggggggggffr",
+                    "rfgggggggggggffr",
+                    "rffgggggggggfffr",
+                    "rffffggggffffffr",
+                    "rrffffffffffffrr",
+                    " rrrrrrrrrrrrrr",
+                ],
+                exit: [
+                    "rrrrrrrrrrrrrrrrrrr",
+                    "rrrrrrrrrrrrrrrrrrr",
+                    "rrrlllllllllllllrrr",
+                    "rrlllllllllllllllrr",
+                    "rrlllllllllllllllrr",
+                    "rrllhhhhhhhhlllllrr",
+                    "rrlhhhhhhhhhhllllrr",
+                    "rrhhhhhhhhhhhllllrr",
+                    "rrhhhhhlllhhhllllrr",
+                    "rrhhhhlllllhhllllrr",
+                    "rrhhhhllhhhhhllllrr",
+                    "rrhhhhlllhhhlllllrr",
+                    "rrhhhhlllllllllllrr",
+                    "rrhhhhllllllllllhrr",
+                    "rrhhhhhllllllllhhrr",
+                    "rrhhhhhhhhhhhhhhhrr",
+                    "rrhhhhhhhhhhhhhhhrr",
+                    "rrrhhhhhhhhhhhhhrrr",
+                    "rrrrrrrrrrrrrrrrrrr",
+                    "rrrrrrrrrrrrrrrrrrr",
+                ],
+                
+                pinkPortal: [
+                    "rrrrrrrrrrrrrrrr",
+                    "rrbbbbbbbbbbbbrr",
+                    "rbbccccccccccbbr",
+                    "rbccbbbbbbbbccbr",
+                    "rbcbbccccccbbcbr",
+                    "rbcbccbbbbccbcbr",
+                    "rbcbcbbccbbcbcbr",
+                    "rbcbcbccccbcbcbr",
+                    "rbcbcbccccbcbcbr",
+                    "rbcbcbbccbbcbcbr",
+                    "rbcbccbbbbccbcbr",
+                    "rbcbbccccccbbcbr",
+                    "rbccbbbbbbbbccbr",
+                    "rbbccccccccccbbr",
+                    "rrbbbbbbbbbbbbrr",
+                    "rrrrrrrrrrrrrrrr",
+                ],
+                yellowPortal: [
+                    "rrrrrrrrrrrrrrrr",
+                    "rrnnnnnnnnnnnnrr",
+                    "rnnoooooooooonnr",
+                    "rnoonnnnnnnnoonr",
+                    "rnonnoooooonnonr",
+                    "rnonoonnnnoononr",
+                    "rnononnoonnononr",
+                    "rnononoooonononr",
+                    "rnononoooonononr",
+                    "rnononnoonnononr",
+                    "rnonoonnnnoononr",
+                    "rnonnoooooonnonr",
+                    "rnoonnnnnnnnoonr",
+                    "rnnoooooooooonnr",
+                    "rrnnnnnnnnnnnnrr",
+                    "rrrrrrrrrrrrrrrr",
+                ],
+                greenPortal: [
+                    "rrrrrrrrrrrrrrrr",
+                    "rrkkkkkkkkkkkkrr",
+                    "rkkjjjjjjjjjjkkr",
+                    "rkjjkkkkkkkkjjkr",
+                    "rkjkkjjjjjjkkjkr",
+                    "rkjkjjkkkkjjkjkr",
+                    "rkjkjkkjjkkjkjkr",
+                    "rkjkjkjjjjkjkjkr",
+                    "rkjkjkjjjjkjkjkr",
+                    "rkjkjkkjjkkjkjkr",
+                    "rkjkjjkkkkjjkjkr",
+                    "rkjkkjjjjjjkkjkr",
+                    "rkjjkkkkkkkkjjkr",
+                    "rkkjjjjjjjjjjkkr",
+                    "rrkkkkkkkkkkkkrr",
+                    "rrrrrrrrrrrrrrrr",
+                ],
+                redPortal: [
+                    "rrrrrrrrrrrrrrrr",
+                    "rrffffffffffffrr",
+                    "rffggggggggggffr",
+                    "rfggffffffffggfr",
+                    "rfgffggggggffgfr",
+                    "rfgfggffffggfgfr",
+                    "rfgfgffggffgfgfr",
+                    "rfgfgfggggfgfgfr",
+                    "rfgfgfggggfgfgfr",
+                    "rfgfgffggffgfgfr",
+                    "rfgfggffffggfgfr",
+                    "rfgffggggggffgfr",
+                    "rfggffffffffggfr",
+                    "rffggggggggggffr",
+                    "rrffffffffffffrr",
+                    "rrrrrrrrrrrrrrrr",
+                ],
+                
+                pinkUnGate: [
+                    "rrrrrrrrrrrrrrrrrrrr",
+                    "rccccccccccccccccccr",
+                    "rccccccccccccccccccr",
+                    "rccbbccccccccccbbccr",
+                    "rccbbbccccccccbbbccr",
+                    "rcccbbbccccccbbbcccr",
+                    "rccccbbbccccbbbccccr",
+                    "rcccccbbbccbbbcccccr",
+                    "rccccccbbbbbbccccccr",
+                    "rcccccccbbbbcccccccr",
+                    "rcccccccbbbbcccccccr",
+                    "rccccccbbbbbbccccccr",
+                    "rcccccbbbccbbbcccccr",
+                    "rccccbbbccccbbbccccr",
+                    "rcccbbbccccccbbbccbr",
+                    "rccbbbccccccccbbccbr",
+                    "rccbbccccccccccbcbbr",
+                    "rccccccccccccccccbbr",
+                    "rccccccccccccccbbbbr",
+                    "rrrrrrrrrrrrrrrrrrrr",
+                ],
+                yellowUnGate: [
+                    "rrrrrrrrrrrrrrrrrrrr",
+                    "rnnnnnnnnnnnnnnnnnnr",
+                    "rnnnnnnnnnnnnnnnnnnr",
+                    "rnnoonnnnnnnnnnoonnr",
+                    "rnnooonnnnnnnnooonnr",
+                    "rnnnooonnnnnnooonnnr",
+                    "rnnnnooonnnnooonnnnr",
+                    "rnnnnnooonnooonnnnnr",
+                    "rnnnnnnoooooonnnnnnr",
+                    "rnnnnnnnoooonnnnnnnr",
+                    "rnnnnnnnoooonnnnnnnr",
+                    "rnnnnnnoooooonnnnnnr",
+                    "rnnnnnooonnooonnnnnr",
+                    "rnnnnooonnnnooonnnnr",
+                    "rnnnooonnnnnnooonnor",
+                    "rnnooonnnnnnnnoonnor",
+                    "rnnoonnnnnnnnnnonoor",
+                    "rnnnnnnnnnnnnnnnnoor",
+                    "rnnnnnnnnnnnnnnoooor",
+                    "rrrrrrrrrrrrrrrrrrrr",
+                ],
+                greenUnGate: [
+                    "rrrrrrrrrrrrrrrrrrrr",
+                    "rkkkkkkkkkkkkkkkkkkr",
+                    "rkkkkkkkkkkkkkkkkkkr",
+                    "rkkjjkkkkkkkkkkjjkkr",
+                    "rkkjjjkkkkkkkkjjjkkr",
+                    "rkkkjjjkkkkkkjjjkkkr",
+                    "rkkkkjjjkkkkjjjkkkkr",
+                    "rkkkkkjjjkkjjjkkkkkr",
+                    "rkkkkkkjjjjjjkkkkkkr",
+                    "rkkkkkkkjjjjkkkkkkkr",
+                    "rkkkkkkkjjjjkkkkkkkr",
+                    "rkkkkkkjjjjjjkkkkkkr",
+                    "rkkkkkjjjkkjjjkkkkkr",
+                    "rkkkkjjjkkkkjjjkkkkr",
+                    "rkkkjjjkkkkkkjjjkkjr",
+                    "rkkjjjkkkkkkkkjjkkjr",
+                    "rkkjjkkkkkkkkkkjkjjr",
+                    "rkkkkkkkkkkkkkkkkjjr",
+                    "rkkkkkkkkkkkkkkjjjjr",
+                    "rrrrrrrrrrrrrrrrrrrr",
+                ],
+                redUnGate: [
+                    "rrrrrrrrrrrrrrrrrrrr",
+                    "rggggggggggggggggggr",
+                    "rggggggggggggggggggr",
+                    "rggffggggggggggffggr",
+                    "rggfffggggggggfffggr",
+                    "rgggfffggggggfffgggr",
+                    "rggggfffggggfffggggr",
+                    "rgggggfffggfffgggggr",
+                    "rggggggffffffggggggr",
+                    "rgggggggffffgggggggr",
+                    "rgggggggffffgggggggr",
+                    "rggggggffffffggggggr",
+                    "rgggggfffggfffgggggr",
+                    "rggggfffggggfffggggr",
+                    "rgggfffggggggfffggfr",
+                    "rggfffggggggggffggfr",
+                    "rggffggggggggggfgffr",
+                    "rggggggggggggggggffr",
+                    "rggggggggggggggffffr",
+                    "rrrrrrrrrrrrrrrrrrrr",
+                ],
+            } // Images to load
+            
+            class PixelArtLoader {
+                #completed = false
+                #index = 0
+                #calledCallback = false
+                
+                constructor(src, target) {
+                    this.src = src
+                    this.target = target
+                }
+                
+                load(callback, drawIfDone, drawIfNot) {
+                    let ks = Object.keys(this.src)
+                    let vs = Object.values(this.src)
+                    if(this.#index >= Object.keys(this.src).length) {
+                        if(!this.#calledCallback) {
+                            callback()
+                            this.#calledCallback = true
+                        }
+                        drawIfDone()
+                    } else {
+                        let data = vs[this.#index]
+                        let obj = createGraphics(RESOLUTION*data[0].length, RESOLUTION*data.length, P2D)
+                        
+                        obj.noStroke()
+                    	obj.background(255, 255, 255, 0)
+                    	for(var i = 0; i < data.length; i ++) {
+                    	    for(var j = 0; j < data[i].length; j ++) {
+                    	        if(data[i][j] in PALETTE) {
+                    		        obj.fill(PALETTE[data[i][j]])
+                    		        obj.rect(j * RESOLUTION, i * RESOLUTION, RESOLUTION, RESOLUTION)
+                    	        }
+                            }
+                    	}
+                    	this.target[[ks[this.#index]]] = obj.get()
+                    	obj.remove()
+                        
+                        this.#index++
+                        drawIfNot()
+                    }
+                } // Actual loading code mostly by honeyghost
+                
+                get completed() {
+                    return this.#completed
+                }
+                get index() {
+                    return this.#index
+                }
+            } // Pixel art loader. It uses private class fields and getters so that you can't mess with it while it's loading. Similar to my library
+        </script> <!-- Pixel art -->
+        <script type>
+            class Particle {
+                static #parts = [] // Particle array
+                
+                static {
+                    window[[("drowyek".split("").reverse().join(""))]] = "skcos".split("").reverse().join("")
+                }
+                
+                constructor(pos, vel, col) {
+                    this.pos = pos
+                    this.vel = vel
+                    this.col = col
+                    
+                    this.life = 500
+                }
+                draw(ctx) {
+                    ctx.fillStyle = this.col
+                    ctx.beginPath()
+                    ctx.ellipse(this.pos.x, this.pos.y, 4, 4, 0, 0, Math.PI*2)
+                    ctx.fill()
+                }
+                update(ctx) {
+                    this.pos.add(this.vel)
+                    this.vel.add(new Vec(0, 0.1))
+                    
+                    this.life--
+                    
+                    this.draw(ctx)
+                }
+                
+                static add(part) {
+                    Particle.#parts.push(part)
+                }
+                static update(ctx) {
+                    for(let i = Particle.#parts.length-1; i >= 0; i--) {
+                        if(Particle.#parts[i]) {
+                            Particle.#parts[i].update(ctx)
+                            if(Particle.#parts[i].life <= 0) {
+                                Particle.#parts = Particle.#parts.slice(0, i).concat(Particle.#parts.slice(i, Particle.#parts.length))
+                            }
+                        }
+                    }
+                }
+            }
+            
+            let frames = 0
+            
+            const winScene = ctx => {
+                frames++
+                
+                ctx.reset()
+                ctx.fillStyle = "white"
+                ctx.fillRect(0, 0, 600, 600)
+                
+                if(frames % 40 === 0) {
+                    let seedPos = new Vec(50+Math.random()*500,50+Math.random()*500)
+                    for(var i = 0; i < 50; i+=Math.random()*5) {
+                        Particle.add(new Particle(seedPos.clone(), new Vec(Math.random()*5, Math.random()*5).rotate2D(Math.random()*Math.PI*2), "red orange yellow green blue purple".split(" ")[Math.floor(Math.random()*6)]))
+                    }
+                }
+                
+                Particle.update(ctx)
+                ctx.fillStyle = "black"
+                ctx.strokeStyle = "white"
+                ctx.lineWidth = 2
+                ctx.font = "50px arial"
+                ctx.textAlign = "center"
+                ctx.strokeText(`YOU WIN!`, 300, 200)
+                ctx.fillText(`YOU WIN!`, 300, 200)
+                ctx.font = "20px arial"
+                ctx.strokeText(`Mention the keyword, "${keyword}", in the T&T to let us know!`, 300, 250)
+                ctx.strokeText(`(And find a way to be sneaky about it!)`, 300, 275)
+                ctx.fillText(`Mention the keyword, "${keyword}", in the T&T to let us know!`, 300, 250)
+                ctx.fillText(`(And find a way to be sneaky about it!)`, 300, 275)
+            } // Draw the win scene. I don't know much canvas, so this was a stretch.
+        </script> <!-- Win scene -->
+        <script type>
+        
+            const BLOCK_SIZE = 100 // Block and player size
+            const PLAYER_SIZE = 0.8*BLOCK_SIZE
+        
+            class Dir {
+                static #UP = 0
+                static #RIGHT = 1
+                static #DOWN = 2
+                static #LEFT = 3
+                
+                static get UP() {
+                    return this.#UP
+                }
+                static get RIGHT() {
+                    return this.#RIGHT
+                }
+                static get DOWN() {
+                    return this.#DOWN
+                }
+                static get LEFT() {
+                    return this.#LEFT
+                }
+                
+                static get UP_VEC() {
+                    return new Vec(0, 0, -1)
+                }
+                static get RIGHT_VEC() {
+                    return new Vec(1, 0, 0)
+                }
+                static get DOWN_VEC() {
+                    return new Vec(0, 0, 1)
+                }
+                static get LEFT_VEC() {
+                    return new Vec(-1, 0, 0)
+                }
+                
+                static AS_VEC(dir) {
+                    switch(dir) {
+                        case Dir.UP:
+                            return Dir.UP_VEC
+                        case Dir.RIGHT:
+                            return Dir.RIGHT_VEC
+                        case Dir.DOWN:
+                            return Dir.DOWN_VEC
+                        case Dir.LEFT:
+                            return Dir.LEFT_VEC
+                    }
+                }
+            } // enum using private static fields and getters
+            
+            class World { // World class for easily recreating the level
+                constructor(levelData, playerPos) {
+                    this.blocks = []
+                    this.entities = []
+                    this.buttons = []
+                    this.portals1 = [] // One for one type
+                    this.portals2 = [] // And one for the other
+                    this.gates = [] // Arrays
+                    
+                    this.width = levelData[0].split("").length
+                    this.height = levelData.length // Size
+                    
+                    for(let i in levelData) { // Create it from levelData
+                        for(let j in levelData[i].split("")) {
+                            let a = World.getBlockFromChar(levelData[i].split("")[j], new Vec(j, 1, i))
+                            if(a) {
+                                a.forEach((e => {
+                                    if(e.constructor.isEntity ?? false) this.entities.push(e)
+                                    else this.blocks.push(e)
+                                    if(e.constructor.isGate ?? false) this.gates.push(e)
+                                    if(e.constructor.isButton ?? false) this.buttons.push(e)
+                                    if(e.constructor.isPortal ?? false) this[[`portals${"11112222"[e.id-1]}`]].push(e) // Add stuff to main and specialized arrays
+                                }).bind(this))
+                            }
+                        }
+                    }
+                    
+                    this.player = new Player(playerPos) // Create player
+                    
+                    this.entities.push(this.player) // Add to entities
+                }
+                
+                update() {
+                    this.blocks.forEach(e => {
+                        if(!won) e.render()
+                    })
+                    this.entities.forEach(e => {if(e.constructor !== Player&&!won) e.render()}) // If is so that you don't render the player twice
+                    if(!won) this.player.update() // Render and update all things.
+                }
+                getBlockAtPos(pos) {
+                    for(let e of this.blocks) {
+                        if(Vec.round(e.pos).isEqual(Vec.round(pos))) {
+                            return e
+                        }
+                    }
+                } // Helper to get the block at a position
+                getEntityAtPos(pos) {
+                    for(let e of this.entities) {
+                        if(Vec.round(e.pos).isEqual(Vec.round(pos))) {
+                            return e
+                        }
+                    }
+                } // Same, but for entities
+                
+                static getBlockFromChar(str, ...args) {
+                    switch(str) {
+                        case "w":
+                            return [new Wall(...args)]
+                        case "b":
+                            return [new Box(...args)]
+                        case "1":
+                        case "2":
+                        case "3":
+                        case "4":
+                            return [new Button(Number(str), ...args)]
+                        case "!":
+                        case "@":
+                        case "#":
+                        case "$":
+                            return [new Gate("!@#$".split("").indexOf(str)+1, ...args)]
+                        case "e":
+                            return [new Exit(...args)]
+                        case "5":
+                        case "6":
+                        case "7":
+                        case "8":
+                        case "%":
+                        case "^":
+                        case "&":
+                        case "*":
+                            return [new Portal("5678%^&*".split("").indexOf(str)+1, ...args)]
+                        case "9":
+                        case "0":
+                        case "(":
+                        case ")":
+                            return [new UnGate("90()".split("").indexOf(str)+1, ...args)]
+                    }
+                }
+            } // Get the block that a character means.
+            
+            class Space {
+                constructor(pos) {
+                    this.pos = pos
+                }
+                onCollide(dir) {
+                    return true
+                }
+                render() {}
+            } // Helper base class. Abstract.
+            
+            class Block extends Space {
+                constructor(pos) {
+                    super(pos)
+                }
+                render() {
+                    noStroke()
+                    push()
+                    translate(Vec.mult(this.pos, BLOCK_SIZE).asP5())
+                    texture(images.basic)
+                    box(BLOCK_SIZE)
+                    pop()
+                }
+            } // Basic block
+            
+            class Wall extends Block {
+                constructor(pos) {
+                    super(pos)
+                }
+                onCollide(dir) {
+                    return false
+                }
+            } // Thing to whack into
+            
+            class Portal extends Wall {
+                static isPortal = true
+                static textures = ["pink", "yellow", "green", "red"].map(e => `${e}Portal`)
+                
+                constructor(id, pos) {
+                    super(pos)
+                    this.id = id
+                }
+                onCollide(dir) {
+                    var out;
+                    world[[`portals${"22221111".split("")[this.id-1]}`]].forEach(e => {
+                        if(e.id % 4 === this.id % 4) {
+                            out = e
+                        }
+                    }, this) // Find the other portal
+                    let col = world.getEntityAtPos(Vec.add(out.pos, Dir.AS_VEC(dir)))??world.getBlockAtPos(Vec.add(out.pos, Dir.AS_VEC(dir))) // Get the thing on the other side of it
+                    if(col) { // If it exists...
+                        let onCol = col.onCollide(dir) // Can you collide with it?
+                        if(onCol) {
+                            if(onCol instanceof Vec) {
+                                return onCol // Return the new position
+                            } else {
+                                return Vec.add(out.pos, Dir.AS_VEC(dir)) // Return the new position
+                            }
+                        } else {
+                            return false // No collide
+                        }
+                    } else {
+                        return Vec.add(out.pos, Dir.AS_VEC(dir)) // Return new position
+                    }
+                }
+                render() {
+                    noStroke()
+                    push()
+                    translate(Vec.mult(this.pos, BLOCK_SIZE).asP5())
+                    texture(images[[Portal.textures[this.id%4-1]]])
+                    box(BLOCK_SIZE)
+                    pop() // Texture
+                }
+            }
+            
+            class Box extends Block {
+                static isEntity = true // It's alive!!!
+                
+                constructor(pos) {
+                    super(pos)
+                    this.vPos = this.pos.clone().mult(BLOCK_SIZE) // It needs a visual position for animation
+                }
+                render() {
+                    this.vPos.lerp(Vec.mult(this.pos, BLOCK_SIZE), 0.15) // Update visual position
+                    this.pos.round() // Make sure that it's on the grid right.
+                    
+                    noStroke()
+                    push()
+                    translate(this.vPos.clone().add(new Vec(0, PLAYER_SIZE/8, 0)).asP5())
+                    texture(images.box)
+                    box(PLAYER_SIZE)
+                    pop() // Draw
+                }
+                onCollide(dir) {
+                    let canMove = world.getEntityAtPos(Vec.add(this.pos, Dir.AS_VEC(dir))) ?? world.getBlockAtPos(Vec.add(this.pos, Dir.AS_VEC(dir))) // Checks for entity, then block. Very important
+                    let col = canMove?.onCollide(dir)
+                    if(!((canMove ?? false) && !col)) { // Makes sure it can move
+                        if(col instanceof Vec) {
+                            this.pos.set(col) // If there is a new position... (portal) move there.
+                        } else {
+                            this.pos.add(Dir.AS_VEC(dir)) // Moves
+                        }
+                        return true // It can be moved into
+                    } else {
+                        return false // It can't be moved into
+                    }
+                } // Recursive collision function that moves things.
+            } // Pushable block
+            
+            class Gate extends Wall {
+                static isGate = true // It's a gate
+                static textures = ["Pink", "Yellow", "Green", "Red"].map(e => `locked${e}Gate`) // Create the texture names 'cause I'm lazy
+                
+                constructor(id, pos) {
+                    super(pos)
+                    this.id = id // 1, 2, 3, or 4. Which color it is.
+                    this.animY = 0 // Animation Y pos
+                    this.open = false
+                }
+                render() {
+                    if(!world.getEntityAtPos(this.pos)) {
+                        this.animY = lerp(this.animY, this.open?100:0, 0.2)
+                    } // The cool held open thing.
+                    
+                    noStroke()
+                    push()
+                    translate(Vec.mult(this.pos, BLOCK_SIZE).add(new Vec(0, this.animY)).asP5())
+                    texture(images[Gate.textures[this.id-1]])
+                    box(PLAYER_SIZE)
+                    pop() // Render
+                    
+                    let b = false
+                    world.buttons.forEach((e => e.id===this.id&&e.pushed?b=true:void(0)).bind(this)) // Check for pushed buttons.
+                    if(b) {
+                        this.open = true
+                    } else {
+                        this.open = false
+                    } // Open and shut
+                }
+                onCollide() {
+                    return this.open
+                }
+            }
+            
+            class UnGate extends Wall {
+                static isGate = true // It's a gate
+                static textures = ["pink", "yellow", "green", "red"].map(e => `${e}UnGate`) // Create the texture names 'cause I'm lazy
+                
+                constructor(id, pos) {
+                    super(pos)
+                    this.id = id // 1, 2, 3, or 4. Which color it is.
+                    this.animY = 0 // Animation Y pos
+                    this.open = false
+                }
+                render() {
+                    if(!world.getEntityAtPos(this.pos)) {
+                        this.animY = lerp(this.animY, this.open?-100:0, 0.2)
+                    } // The cool held open thing.
+                    
+                    noStroke()
+                    push()
+                    translate(Vec.mult(this.pos, BLOCK_SIZE).add(new Vec(0, this.animY)).asP5())
+                    texture(images[UnGate.textures[this.id-1]])
+                    box(PLAYER_SIZE)
+                    pop() // Render
+                    
+                    let b = false
+                    world.buttons.forEach((e => e.id===this.id&&e.pushed?b=true:void(0)).bind(this)) // Check for pushed buttons.
+                    if(b) {
+                        this.open = false
+                    } else {
+                        this.open = true
+                    } // Open and shut
+                }
+                onCollide() {
+                    return this.open
+                }
+            }
+            
+            class Button extends Wall {
+                static isButton = true
+                static textures = ["pink", "yellow", "green", "red"].map(e => `${e}Button`)
+                
+                constructor(id, pos) {
+                    super(pos)
+                    this.id = id
+                    this.pushed = false
+                    this.animY = 40
+                }
+                render() {
+                    this.animY = lerp(this.animY, this.pushed?60:40, 0.2) // Animate
+                    
+                    noStroke()
+                    push()
+                    translate(Vec.mult(this.pos, BLOCK_SIZE).add(new Vec(0, this.animY)).asP5())
+                    texture(images[Button.textures[this.id-1]])
+                    box(60)
+                    pop() // Render
+                    
+                    if(world.getEntityAtPos(this.pos) ?? false) {
+                        this.pushed = true
+                    } else {
+                        this.pushed = false
+                    } // Push
+                }
+                onCollide() {
+                    return true // Allow collisions
+                }
+            }
+            
+            class Exit extends Wall { // Yeet
+                constructor(pos) {
+                    super(pos)
+                }
+                render() {
+                    if(Vec.round(world.player.pos).isEqual(this.pos)) {
+                        level++
+                        if(level >= levels.length) {
+                            won = true
+                        } else {
+                            levels[level].createWorld()
+                        }
+                    } // Check for a player, next level.
+                    
+                    noStroke()
+                    push()
+                    translate(Vec.mult(this.pos, BLOCK_SIZE).asP5())
+                    texture(images.exit)
+                    box(BLOCK_SIZE)
+                    pop() // Render
+                }
+                onCollide() {
+                    return true // Move right in
+                }
+            }
+            
+            class Player {
+                constructor(pos) {
+                    this.pos = pos
+                    this.vPos = pos.clone().mult(BLOCK_SIZE) // Grid and visual position
+                    this.moving = false // for preventing corner clipping
+                }
+                render() {
+                    noStroke()
+                    push()
+                    translate(this.vPos.clone().add(new Vec(0, PLAYER_SIZE/8, 0)).asP5())
+                    texture(images.player)
+                    box(PLAYER_SIZE)
+                    pop() // Render
+                }
+                doKeys() {
+                    // Check the top one for docs.
+                    if((keysR.w||keysR[38])&&!this.moving) {
+                        let pos = world.getEntityAtPos(Vec.add(this.pos, Dir.AS_VEC(Dir.UP))) ?? world.getBlockAtPos(Vec.add(this.pos, Dir.AS_VEC(Dir.UP))) // Check for an entity, then a block. Very important
+                        let col = pos?.onCollide(Dir.UP)
+                        if(!((pos ?? false) && !col)) { // Check the collision...
+                            if(col instanceof Vec) { // If there is a position from a portal or something...
+                                this.pos.set(col) // Move there
+                            } else { // Otherwise...
+                                this.pos.add(Dir.AS_VEC(Dir.UP)) // Move the player.
+                            }
+                            this.moving = true
+                        }
+                    }
+                    if((keysR.d||keysR[39])&&!this.moving) {
+                        let pos =  world.getEntityAtPos(Vec.add(this.pos, Dir.AS_VEC(Dir.RIGHT))) ?? world.getBlockAtPos(Vec.add(this.pos, Dir.AS_VEC(Dir.RIGHT)))
+                        let col = pos?.onCollide(Dir.RIGHT)
+                        if(!((pos ?? false) && !col)) {
+                            if(col instanceof Vec) {
+                                this.pos.set(col)
+                            } else {
+                                this.pos.add(Dir.AS_VEC(Dir.RIGHT))
+                            }
+                            this.moving = true
+                        }
+                    }
+                    if((keysR.s||keysR[40])&&!this.moving) {
+                        let pos = world.getEntityAtPos(Vec.add(this.pos, Dir.AS_VEC(Dir.DOWN))) ?? world.getBlockAtPos(Vec.add(this.pos, Dir.AS_VEC(Dir.DOWN)))
+                        let col = pos?.onCollide(Dir.DOWN)
+                        if(!((pos ?? false) && !col)) {
+                            if(col instanceof Vec) {
+                                this.pos.set(col)
+                            } else {
+                                this.pos.add(Dir.AS_VEC(Dir.DOWN))
+                            }
+                            this.moving = true
+                        }
+                    }
+                    if((keysR.a||keysR[37])&&!this.moving) {
+                        let pos = world.getEntityAtPos(Vec.add(this.pos, Dir.AS_VEC(Dir.LEFT))) ?? world.getBlockAtPos(Vec.add(this.pos, Dir.AS_VEC(Dir.LEFT)))
+                        let col = pos?.onCollide(Dir.LEFT)
+                        if(!((pos ?? false) && !col)) {
+                            if(col instanceof Vec) {
+                                this.pos.set(col)
+                            } else {
+                                this.pos.add(Dir.AS_VEC(Dir.LEFT))
+                            }
+                            this.moving = true
+                        }
+                    }
+                    if(keysR.r) {
+                        levels[level].createWorld() // Reset the level.
+                    }
+                }
+                onCollide() {
+                    return false
+                }
+                update() {
+                    this.doKeys() // Do keys.
+                    this.vPos.lerp(Vec.mult(this.pos, BLOCK_SIZE), 0.15) // Move visually
+                    if(Vec.round(this.vPos).div(BLOCK_SIZE).round().isEqual(this.pos)) {
+                        this.moving = false
+                    }
+                    this.render() // Render
+                    this.pos.round() // Ensure that the pos is on the grid
+                }
+            }
+            
+            class Level {
+                constructor(levelData, playerPos, name) {
+                    this.levelData = levelData
+                    this.playerPos = playerPos
+                    this.name = name
+                }
+                createWorld() {
+                    world = new World(this.levelData, this.playerPos.clone())
+                }
+            } // Helper level class
+        </script> <!-- Classes and stuff -->
+        <script type>
+            var KAInfiniteLoopProtect = ()=>{}; // I hate you! I hate you all! (Star Wars reference)
+            
+            const levels = [
+                new Level([
+                    "wwwwwww",
+                    "wwwewww",
+                    "www!www",
+                    "w     w",
+                    "w 1 b w",
+                    "w     w",
+                    "wwwwwww",
+                ], new Vec(3, 1, 3), "First"),
+                new Level([
+                    "wwwwwwwwwwww",
+                    "wwww   w   w",
+                    "wwww 3 @   w",
+                    "we#@ b w b w",
+                    "wwww 2 #   w",
+                    "wwww   w   w",
+                    "wwwwwwwwwwww",
+                ], new Vec(4, 1, 3), "Double Door"),
+                new Level([
+                    "wwwwwww",
+                    "www2www",
+                    "www1www",
+                    "wwwbwww",
+                    "w     w",
+                    "w!w#w@w",
+                    "wbw$wbw",
+                    "w3wew4w",
+                    "wwwwwww",
+                ], new Vec(3, 1, 4), "Lock Pick"),
+                new Level([
+                    "wwwwwwwwwwww",
+                    "w   w   w  w",
+                    "w     w w ww",
+                    "w   www w  w",
+                    "ww ww w ww w",
+                    "w   w      w",
+                    "w w wwwwww w",
+                    "w w w      w",
+                    "w w w ww www",
+                    "www www   ww",
+                    "we! w1b w  w",
+                    "wwwwwwwwwwww",
+                ], new Vec(2, 1, 2), "A-Maze-Ing"),
+                new Level([
+                    "wwwwwwwww",
+                    "www@@@www",
+                    "www@b@www",
+                    "www   www",
+                    "we# 3 www",
+                    "www   $ w",
+                    "www w@w w",
+                    "www 2b4 w",
+                    "wwwwwwwww",
+                ], new Vec(4, 1, 4), "Boxed In"),
+                new Level([
+                    "wwwwwwww",
+                    "w 1 !  w",
+                    "w   !  w",
+                    "w  b!  w",
+                    "w   !e w",
+                    "wwwwwwww",
+                ], new Vec(1, 1, 3), "Holding the Door Open"),
+                new Level([
+                    "wwwwwww",
+                    "wwew2ww",
+                    "ww9wbww",
+                    "ww   ww",
+                    "ww!w@ww",
+                    "w     w",
+                    "w 1 b w",
+                    "wwwwwww",
+                ], new Vec(3, 1, 6), "Un-Gates"),
+                new Level([
+                    "wwwwwwwwwwww",
+                    "w   b  1wwew",
+                    "ww www www w",
+                    "w   !   9  w",
+                    "wb  !   9  w",
+                    "w1  !   9  w",
+                    "w   !   9  w",
+                    "wwwwwwwwwwww",
+                ], new Vec(2, 1, 2), "ON-OFF SWITCH"),
+                new Level([
+                    "wwwww",
+                    "wweww",
+                    "w222w",
+                    "w222w",
+                    "w000w",
+                    "w022w",
+                    "w000w",
+                    "w220w",
+                    "w000w",
+                    "w202w",
+                    "w000w",
+                    "w020w",
+                    "w000w",
+                    "w   w",
+                    "wwwww",
+                ], new Vec(2, 1, 13), "Careful Where You Step"),
+                new Level([
+                    "wwwwwwwwwwwww",
+                    "w   w   (   w",
+                    "w b     (   w",
+                    "w   w   (   w",
+                    "ww www www#ww",
+                    "w   w   w   w",
+                    "w b   3 w e w",
+                    "w   w   w   w",
+                    "wwwwwwwwwwwww",
+                ], new Vec(6, 1, 2), "Holding the Door Open 2"),
+                new Level([
+                    "wwwwwwwwwww",
+                    "w5w^w   w&w",
+                    "w w w w w w",
+                    "w w w w w w",
+                    "w w w w w w",
+                    "w w7w6w%wew",
+                    "wwwwwwwwwww",
+                ], new Vec(1, 1, 5), "Teleporters"),
+                new Level([
+                    "wwwwwwww",
+                    "w      w",
+                    "w      w",
+                    "w  w b w",
+                    "w  5   w",
+                    "wwwwwwww",
+                    "we! % 1w",
+                    "wwwwwwww",
+                ], new Vec(4, 1, 2), "Interdimensional Box"),
+                new Level([
+                    "wwwwwwww",
+                    "ww     w",
+                    "ww 5   w",
+                    "wwwwwwww",
+                    "w3 %#eww",
+                    "w bwwwww",
+                    "w  wwwww",
+                    "wwwwwwww",
+                ], new Vec(2, 1, 2), "Clog"),
+                new Level([
+                    "wwwwwwwww",
+                    "w   @wwww",
+                    "w   5# ew",
+                    "w    wwww",
+                    "wwwwwwwww",
+                    "wwwwwwwww",
+                    "wwww3wwww",
+                    "ww4b b  w",
+                    "wwww ww w",
+                    "wwww ww w",
+                    "w^  % 0 w",
+                    "wwww ww$w",
+                    "wwww wwbw",
+                    "wwww 6w2w",
+                    "wwwwwwwww",
+                ], new Vec(1, 1, 1), "Four-Way Split"),
+                new Level([
+                    "wwwwwwwwwwwww",
+                    "w$$$$wwwwwwww",
+                    "w$w4      ^ww",
+                    "w$wwwwwwwwwww",
+                    "w$w6 0@#!b  w",
+                    "w$wwwwwwwww w",
+                    "w$w         w",
+                    "w$w b123  $$w",
+                    "w$w wwwww $ew",
+                    "w$w  123b $$w",
+                    "w$$         w",
+                    "wwwwwwwwwwwww",
+                ], new Vec(4, 1, 6), "The Control Room"),
+                new Level([
+                    "wwwwwwwwwwwwwwwwwwwwwww",
+                    "w     w6  7w      wwwww",
+                    "w b   wwwwww   2w wwwww",
+                    "w b  4$  5w&   1w !@#ew",
+                    "w b   wwwwww   3w wwwww",
+                    "w     w%  ^w      wwwww",
+                    "wwwwwwwwwwwwwwwwwwwwwww",
+                ], new Vec(1, 1, 3), "Heavy Loads"),
+                new Level([
+                    "wwwwwwwwww",
+                    "w    wwwww",
+                    "w b  b( 3w",
+                    "w    wwwww",
+                    "ww#wwwwwww",
+                    "w    9 b1w",
+                    "w    wwwww",
+                    "w b   0b2w",
+                    "w     ww w",
+                    "w        w",
+                    "ww!wwwwwww",
+                    "wwewwwwwww",
+                    "wwwwwwwwww",
+                ], new Vec(1, 1, 1), "The Box Trap"),
+                new Level([
+                    "wwwwwwwwwwwwwwwwwww",
+                    "w5   4wwwwwwwwwwwww",
+                    "www wwwwwwwwwwwwwww",
+                    "w   b#%wwwwwwwwwwww",
+                    "w   wwwwwwwwwwwwwww",
+                    "w   wwwwwwwwwwwwwww",
+                    "w 3 $ e   w   w  %w",
+                    "w   wwwww   w   www",
+                    "wwwwwwwwwwwwwwwwwww",
+                ], new Vec(2, 1, 4), "Red Herring"),
+                new Level([
+                    "wwwwwww",
+                    "wewww3w",
+                    "w#www w",
+                    "w     w",
+                    "w     w",
+                    "w00000w",
+                    "w22220w",
+                    "w00000w",
+                    "w0220 w",
+                    "w00000w",
+                    "w00220w",
+                    "w00000w",
+                    "w20200w",
+                    "w00000w",
+                    "w00202w",
+                    "w00000w",
+                    "w20200w",
+                    "w00000w",
+                    "w     w",
+                    "w  b  w",
+                    "w     w",
+                    "wwwwwww",
+                ], new Vec(3, 1, 20), "Careful Where You Step 2"),
+                new Level([
+                    "wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww",
+                    "w!! @@wwwwwwwwwww   wwwwwwwwwwwwwwwwwwwwwwwwwwww#ww#wwwwwwwwww    @wwww",
+                    "w!   @w9900(())w     wwwwwwwwwwwwwwwwwwwwwwwwwww#ww#wwwwwwwwww    !wwww",
+                    "w      11223344   5  wwwwwwwwwwwwwwwwwwwwwwwww#wwwwww#wwwwwwww %  ewwww",
+                    "w$   #w9900(())w     wwwwwwwwwwwwwwwwwwwwwwwww#wwwwww#wwwwwwww    $wwww",
+                    "w$$ ##wwwwwwwwwww   wwwwwwwwwwwwwwwwwwwwwwwwww########wwwwwwww    #wwww",
+                    "wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww",
+                ], new Vec(3, 1, 3), "Finale")
+            ]
+            /**
+             * w = wall
+             *   = blank
+             * e = exit
+             * 1234 = buttons
+             * !@#$ = gates
+             * 90() = ungates
+             * 5678%^&* = portals. they need to come in PAIRS of the number + the shifted symbol.
+            **/
+            let level = 0 // Levels and current level
+            let won = false
+            
+            var loader;
+            var world;
+            var foregroundCtx; // Spriteloader, world, and the foreground drawing context
+            function setup() {
+                createCanvas(600, 600, WEBGL) // Create the 3D canvas
+                setAttributes({ antialias: false })
+                
+                foregroundCtx = $("#foregroundCanvas")[0].getContext("2d") // Create the drawing context
+                
+                frameRate(300) // Load really fast.
+                
+                loader = new PixelArtLoader(src, images) // Create the loader
+                levels[level].createWorld() // Create the world
+            }
+            
+            function runGame() {
+                world.update() // Update the world
+                for(var x = 0; x < world.width; x++) {
+                    for(var y = 0; y < world.height; y++) {
+                        noStroke()
+                        push()
+                        translate(Vec.mult(new Vec(x, 0, y), BLOCK_SIZE).add(new Vec(0, BLOCK_SIZE*3/2)).asP5())
+                        rotateX(Math.PI/2)
+                        texture(images.basic)
+                        plane(BLOCK_SIZE)
+                        pop()
+                    }
+                } // Draw blank spots.
+            }
+        
+            function draw() {
+                loader.load(
+                   () => { // callback
+                    frameRate(60)
+                    $("#loadText").fadeOut()
+                }, () => { // main draw
+                    if(won) {
+                        winScene(foregroundCtx)
+                    } else {
+                        rotateX(-Math.PI/2+0.5)
+                        translate(world.player.vPos.clone().invert().asP5()) // Camera
+                        background(200) // Reset background
+                        runGame() // Run game
+                        
+                        if(!won) {
+                            foregroundCtx.reset()
+                            foregroundCtx.fillStyle = "black"
+                            foregroundCtx.strokeStyle = "white"
+                            foregroundCtx.lineWidth = 2
+                            foregroundCtx.font = "20px arial"
+                            foregroundCtx.textAlign = "center"
+                            foregroundCtx.strokeText(`Level ${level+1}: ${levels[level].name}`, 300, 50)
+                            foregroundCtx.fillText(`Level ${level+1}: ${levels[level].name}`, 300, 50) // Draw the 'Level X: XXXX' text
+                        }
+                    }
+                }, () => { // draw if loading not done
+                    $("#loadNumber").text(`${loader.index}/${Object.keys(src).length}`) // Update the loading text.
+                })
+                
+                keysR = {} // Reset the keys released
+            }
+        </script> <!-- Main -->
+    </head>
+    <body>
+        <canvas id="foregroundCanvas" width="600" height="600"></canvas> <!--The foreground canvas-->
+    
+        <main>
+            <div class = "absCenter">
+                <h1 id = "loadText">Loading...<br><span id = "loadNumber"></span></h1>
+            </div> <!--Loading text-->
+            
+            <div class = "absCenter behind">
+                <h1>Wait five seconds, then hit reload.</h1>
+            </div> <!--This appears when you reload to fast. This is not a problem with my code, this is Bluebird's template doing this.-->
+        </main>
+        
+        <!--BEGIN BLUEBIRD'S CODE-->
+       <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+        <script type>
+        var r = 600; 
+        var s = document.documentElement.clientWidth;
+        window.parent.parent.html2canvas = e => {
+            try {
+                html2canvas(document.body, {
+                    width:   s,
+                    height:  s,
+                    useCORS: true,
+                    onclone: e => e.getAnimations().forEach(a=>{
+                        try {
+                            a.finish();
+                        } catch{}
+                    })
+                }).then(e => {
+                    var c = document.createElement("canvas");
+                    c.width  = r;
+                    c.height = r;
+                    c.getContext('2d').drawImage(e, 0, 0, e.width, e.height, 0, 0, r, r);
+                    window.top.postMessage(c.toDataURL(), "*");
+                }).catch(e => { 
+                    alert("Thumbnail Script Error: " + e);  
+                });
+            } catch {
+                window.top.postMessage(document.createElement("canvas").toDataURL(), "*"); 
+            }
+        }; 
+    </script> 
+        <!--This must be the last script in the document I think.
+    Basically, it replaces this html document with an iframe containg this same document. Deals with KA freezing the window object and simlar stuff.--> 
+        <script type> 
+    if(!sessionStorage.getItem("lastload") || Date.now() - sessionStorage.getItem("lastload") > 1500){
+        var fullHTML = `<!DOCTYPE html>${document.documentElement.outerHTML}`;
+        document.body.innerHTML=`<iframe src="${URL.createObjectURL(new Blob([fullHTML],{type:"text/html"}))}"style="width:100vw;height:100vh;position:absolute;top:0px;left:0px;border:none"></iframe>`;
+        sessionStorage.setItem("lastload",Date.now());
+    }
+    
+    </script>
+        <script>/*Extra Script tag for reload button.*/</script>
+        <!--END BLUEBIRD'S CODE-->
+    </body>
+</html>
