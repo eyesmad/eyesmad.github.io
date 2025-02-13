@@ -298,6 +298,16 @@
       "title": "Riddle School 5",
       "image": "/static/public/g/riddleschool5/riddleschool5.png",
       "link": "/static/public/g/riddleschool5/"
+    },
+      {
+      "title": "Grappler",
+      "image": "/static/public/g/grappler/img.png",
+      "link": "/static/public/g/grappler/"
+    },
+      {
+      "title": "Puzzle Crates",
+      "image": "/static/public/g/crates/img.png",
+      "link": "/static/public/g/crates/"
     }
 ]
 
