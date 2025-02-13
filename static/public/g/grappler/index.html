@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<!--
+
+for khantober monday 2
+
+its like my first ogriginal 3d game
+
+and the item is called a grappling HOOK and not a grappling [censored 3 letter word that references a type of weapon, starts with "g" and ends with "n"]! its even referred to as HOOK in thee code that you can't find or read. a *HOOK*
+
+also the physics are from karlson so have fun ig
+
+and the code is compiled from my game engine sTop complainInG
+-->
+<html><head><meta charset="utf-8"><title>Grappler</title></head><body style='margin:0px;overflow:hidden;'><div id='PROGRAM_DIV' style='position:fixed;left:0%;top:0%;right:0%;bottom:0%;background-color:rgb(255,0,0)'></div><script src='https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix-min.js'></script><script src='https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js'></script><script src='https://cdn.jsdelivr.net/gh/Dddatt/D.js@v2.3.0/index.js'></script><script type>setTimeout(()=>{PROGRAM_DIV.width=innerWidth;PROGRAM_DIV.height=innerHeight;(function(div){
+        try{
+        
+        let canvas=document.createElement('canvas')
+        canvas.width=div.width
+        canvas.height=div.height
+        div.appendChild(canvas)
+        let Data={"_pipeline":[{"type":"UpdatePhysics"},{"type":"ComputeTransformations"},{"type":"RenderShadowMaps"},{"type":"MainRender","outputs":"[]","depthBuffer":true},{"type":"PostProcessor","inputs":"[]","outputs":"[]","depthBuffer":false,"script":"SkyboxShader"}],"_settings":{"contextAttributes":{"antialias":true,"preserveDrawingBuffer":true,"depth":true,"stencil":false,"alpha":true,"premultipledAlpha":true},"timeMultiplier":1,"minDeltaTime":0,"maxDeltaTime":0.25,"gravity":[0,-5,0],"quatNormalizeSkip":1,"quatNormalizeFast":true,"defaultFriction":0,"defaultRestitution":0.05,"dynamicLightsInfo":{"position":true,"rotation":false,"intensity":false,"color":true,"innerCone":false,"outerCone":false,"diffuseRemapScale":false,"diffuseRemapAdd":false},"textureDrawingCanvasWidth":1024,"textureDrawingCanvasHeight":1024,"vertexDataAttributesInShadowMappingProgram":1},"_assets":{"DefaultMaterial":{"type":"material","script":"MaterialShader","specularExponent":500,"specularIntensity":0.5,"extraDataFormat":"[]","vertexData":{"position":true,"normal":true,"color":true,"uv":false},"texture":"[]","normalMap":"","instancedDataFormat":"[]","recieveShadows":true,"recieveShadowsFrom":"[]"},"HookMaterial":{"type":"material","script":"HookMaterialShader","specularExponent":500,"specularIntensity":0.5,"extraDataFormat":"[]","vertexData":{"position":true,"normal":true,"color":true,"uv":false},"texture":"[]","normalMap":"","instancedDataFormat":"[]","recieveShadows":true,"recieveShadowsFrom":"[]"},"MaterialShader":{"type":"script","lang":"glsl","code":"@ VertexShader {\n    \n    #version 300 es\n    precision mediump float;\n    \n    HARDCODED_VERTEX_ATTRIBUTES\n    \n    HARDCODED_INSTANCED_ATTRIBUTES\n    \n    uniform mat4 modelMatrix;\n    uniform mat4 viewMatrix;\n    \n    out vec3 pixPos;\n    out vec3 pixNormal;\n    out vec3 pixColor;\n    \n    void main(){\n        \n        vec4 pos=modelMatrix*vec4(vertPos,1);\n        \n        pixPos=pos.xyz;\n        pixNormal=mat3(modelMatrix)*vertNormal;\n        pixColor=vertColor;\n        \n        gl_Position=viewMatrix*pos;\n    }\n}\n\n@ FragmentShader {\n    \n    #version 300 es\n    precision mediump float;\n    \n    in vec3 pixPos;\n    in vec3 pixNormal;\n    in vec3 pixColor;\n        \n    uniform vec3 camPos;\n    \n    HARDCODED_UNIFORMS\n    \n    out vec4 FragColor;\n    \n    vec3 applyAmbientLight(vec3 pix,vec3 col,float inst){\n        return pix*col*inst;\n    }\n    vec3 applyDirectionalLight(vec3 pix,vec3 normal,vec3 dir,vec3 col,float inst,float diffuseRemapScale,float diffuseRemapAdd){\n        float diffuse=max(dot(-dir,normal)*diffuseRemapScale+diffuseRemapAdd,0.0);\n        vec3 toLight=dir;\n        float specular=pow(max(dot(normalize(-dir+normalize(camPos-pixPos)),normal),0.0),HARDCODED_SPECULAR_EXPONENT);\n        return (diffuse*pix+specular*HARDCODED_SPECULAR_INTENSITY)*inst*col;\n    }\n    vec3 applyPointLight(vec3 toLight,float x,vec3 pix,vec3 normal,vec3 dir,vec3 col,float inst,float innerCone,float outerCone,float diffuseRemapScale,float diffuseRemapAdd){\n        float diffuse=max(dot(toLight,normal)*diffuseRemapScale+diffuseRemapAdd,0.0);\n        float specular=pow(max(dot(normalize(toLight+normalize(camPos-pixPos)),normal),0.0),HARDCODED_SPECULAR_EXPONENT);\n        \n        float conal=smoothstep(outerCone,innerCone,dot(toLight,-dir));\n        return (diffuse*pix+specular*HARDCODED_SPECULAR_INTENSITY)*conal*inst*col/x;\n    }\n    float applyShadow(sampler2D tex,mat4 mat,vec3 pos,vec3 normal,int blurSamples,float blurRadius,float inst,float biasScale,float biasAdd){\n        \n        vec4 proj=mat*vec4(pixPos,1);\n        proj.xyz/=proj.w;\n        proj.xyz=proj.xyz*0.5+0.5;\n        \n        float currentDepth=proj.z-max((0.5-dot(normalize(pos-pixPos),normal))*biasScale,biasAdd);\n        float shadow=1.0;\n        \n        for(int y=-blurSamples;y<=blurSamples;y++){\n            for(int x=-blurSamples;x<=blurSamples;x++){\n                float projDepth=texture(tex,proj.xy+vec2(x,y)*blurRadius).r;\n                if(projDepth<=currentDepth)\n                    shadow-=inst;\n            }\n        }\n        if(proj.z>1.0||proj.x<0.0||proj.x>1.0||proj.y<0.0||proj.y>1.0) shadow=1.0;\n        return shadow;\n    }\n    \n    void main(){\n        \n        float shadow=1.0;\n        vec3 normal=normalize(pixNormal);\n        vec3 color=vec3(0);\n        vec3 pix=pixColor;\n        \n        HARDCODED_SHADOW_COMPUTATIONS\n        \n        HARDCODED_STATIC_LIGHT_COMPUTATIONS\n        HARDCODED_DYNAMIC_LIGHT_COMPUTATIONS\n        \n        FragColor=vec4(color*shadow,1.0);\n    }\n}"},"HookMaterialShader":{"type":"script","lang":"glsl","code":"@ VertexShader {\n    \n    #version 300 es\n    precision mediump float;\n    \n    HARDCODED_VERTEX_ATTRIBUTES\n    \n    HARDCODED_INSTANCED_ATTRIBUTES\n    \n    uniform mat4 modelMatrix;\n    uniform mat4 viewMatrix;\n    \n    out vec3 pixPos;\n    out vec3 pixNormal;\n    out vec3 pixColor;\n    \n    void main(){\n        \n        vec4 pos=modelMatrix*vec4(vertPos,1);\n        \n        pixPos=pos.xyz;\n        pixNormal=mat3(modelMatrix)*vertNormal;\n        pixColor=vertColor;\n        \n        gl_Position=viewMatrix*pos;\n    }\n}\n\n@ FragmentShader {\n    \n    #version 300 es\n    precision mediump float;\n    \n    in vec3 pixPos;\n    in vec3 pixNormal;\n    in vec3 pixColor;\n        \n    uniform vec3 camPos;\n    \n    HARDCODED_UNIFORMS\n    \n    out vec4 FragColor;\n    \n    vec3 applyAmbientLight(vec3 pix,vec3 col,float inst){\n        return pix*col*inst;\n    }\n    vec3 applyDirectionalLight(vec3 pix,vec3 normal,vec3 dir,vec3 col,float inst,float diffuseRemapScale,float diffuseRemapAdd){\n        float diffuse=max(dot(-dir,normal)*diffuseRemapScale+diffuseRemapAdd,0.0);\n        vec3 toLight=dir;\n        float specular=pow(max(dot(normalize(-dir+normalize(camPos-pixPos)),normal),0.0),HARDCODED_SPECULAR_EXPONENT);\n        return (diffuse*pix+specular*HARDCODED_SPECULAR_INTENSITY)*inst*col;\n    }\n    vec3 applyPointLight(vec3 toLight,float x,vec3 pix,vec3 normal,vec3 dir,vec3 col,float inst,float innerCone,float outerCone,float diffuseRemapScale,float diffuseRemapAdd){\n        float diffuse=max(dot(toLight,normal)*diffuseRemapScale+diffuseRemapAdd,0.0);\n        float specular=pow(max(dot(normalize(toLight+normalize(camPos-pixPos)),normal),0.0),HARDCODED_SPECULAR_EXPONENT);\n        \n        float conal=smoothstep(outerCone,innerCone,dot(toLight,-dir));\n        return (diffuse*pix+specular*HARDCODED_SPECULAR_INTENSITY)*conal*inst*col/x;\n    }\n    float applyShadow(sampler2D tex,mat4 mat,vec3 pos,vec3 normal,int blurSamples,float blurRadius,float inst,float biasScale,float biasAdd){\n        \n        vec4 proj=mat*vec4(pixPos,1);\n        proj.xyz/=proj.w;\n        proj.xyz=proj.xyz*0.5+0.5;\n        \n        float currentDepth=proj.z-max((0.5-dot(normalize(pos-pixPos),normal))*biasScale,biasAdd);\n        float shadow=1.0;\n        \n        for(int y=-blurSamples;y<=blurSamples;y++){\n            for(int x=-blurSamples;x<=blurSamples;x++){\n                float projDepth=texture(tex,proj.xy+vec2(x,y)*blurRadius).r;\n                if(projDepth<=currentDepth)\n                    shadow-=inst;\n            }\n        }\n        if(proj.z>1.0||proj.x<0.0||proj.x>1.0||proj.y<0.0||proj.y>1.0) shadow=1.0;\n        return shadow;\n    }\n    \n    void main(){\n        \n        float shadow=1.0;\n        vec3 normal=normalize(pixNormal);\n        vec3 color=vec3(0);\n        vec3 pix=pixColor;\n        \n        HARDCODED_SHADOW_COMPUTATIONS\n        \n        HARDCODED_STATIC_LIGHT_COMPUTATIONS\n        HARDCODED_DYNAMIC_LIGHT_COMPUTATIONS\n        \n        FragColor=vec4(color*shadow,1.0);\n        gl_FragDepth=0.0;\n    }\n}"},"MapGenerator":{"type":"script","lang":"js","code":"Export.OnCreate = function(This, Engine){\n    \n    let start=Engine.CreateElement('geometry')\n    start.data.y=0\n    start.data.h=0.25\n    start.data.w=start.data.l=4\n    start.data.type='box'\n    This.children={start:start}\n    let start2=Engine.CreateElement('geometry')\n    start2.render=false\n    start2.data.y=-10000\n    start2.data.h=0.25\n    start2.data.w=start2.data.l=400\n    start2.data.type='box'\n    This.children.start2=start2\n    \n    Engine.noiseProperties.octaves=3\n    let seed=D.random(-10000,10000)\n    \n    for(let i=3;i<180;i+=D.random(2,4)){\n        \n        let p=This.children['platform'+i]=Engine.CreateElement('geometry')\n        p.data.z=-i\n        p.data.x=D.random(-1,1)+(Engine.Noise1D(i*0.05+seed)-0.5)*25\n        p.data.y=D.random(1,2)\n        p.data.w=p.data.h=p.data.l=p.data.radius=D.random(0.5,1)\n        p.data.radius*=0.5\n        p.data.detail=2\n        p.data.rx=Math.random()*360\n        p.data.ry=Math.random()*360\n        p.data.rz=Math.random()*360\n        if(Math.random()<0.5)\n        p.data.type='box'\n    }\n    \n    Engine.InitalizeMesh(This)\n    Engine.InitalizeTransform(This)\n    \n}"},"CameraController":{"type":"script","lang":"js","code":"let yaw=0,pitch=0,keys={}\n\nExport.OnCreate = function(This, Engine){\n    \n    let b=Engine.canvas.getBoundingClientRect(),ch=document.createElement('div')\n    ch.style='position:fixed;left:'+((b.left+b.right)*0.5)+'px;top:'+((b.top+b.bottom)*0.5)+'px;width:3px;height:3px;background-color:black;transform:translate(-50%,-50%);border-radius:10px'\n    Engine.div.appendChild(ch)\n    \n    Engine.canvas.onmousedown=()=>Engine.canvas.requestPointerLock()\n    \n    Engine.canvas.onmousemove=(e)=>{\n        \n        Engine.camera.yaw=yaw-=e.movementX*0.25\n        Engine.camera.pitch=pitch=D.constrain(pitch-e.movementY*0.25,-90,90)\n        \n        \n        This.transform.rotation=quat.fromEuler(This.transform.rotation,pitch,yaw,0)\n    }\n}\n\n\n\n"},"PlayerMovement":{"type":"script","lang":"js","code":"let keys={},grounded,time=0,t=document.createElement('div')\n\nExport.OnCreate = function(This, Engine){\n    \n    let b=Engine.canvas.getBoundingClientRect()\n    t.style='position:fixed;left:'+((b.left+b.right)*0.5)+'px;top:'+(b.top+30)+'px;width:'+(b.right-b.left)+'px;height:40px;color:black;transform:translate(-50%,-50%);border-radius:10px;text-align:center;font-family:monospace;font-size:20px'\n    Engine.div.appendChild(t)\n    \n    document.onkeydown=(e)=>{\n        \n        keys[e.key.toLowerCase()]=1\n        if(keys.j){\n            Grapple()\n        }\n    }\n    document.onkeyup=(e)=>keys[e.key.toLowerCase()]=0\n    \n    This.physics.body.addEventListener('collide',(e)=>{\n        \n        grounded=e.contact.ni.y>0.25\n    })\n}\n\nExport.OnUpdate = function(This, Engine){\n    \n    let s=Math.sin(Engine.camera.yaw*D.TO_RAD),c=Math.cos(Engine.camera.yaw*D.TO_RAD),f=Engine.deltaTime*75,wish_x=0,wish_z=0,ins=0\n    \n    if(keys.w){\n        wish_x-=f*s\n        wish_z-=f*c\n        ins++\n    }\n    if(keys.s){\n        wish_x+=f*s\n        wish_z+=f*c\n        ins++\n    }\n    if(keys.a){\n        wish_x-=f*c\n        wish_z+=f*s\n        ins++\n    }\n    if(keys.d){\n        wish_x+=f*c\n        wish_z-=f*s\n        ins++\n    }\n    if(ins>1){\n        \n        wish_x*=D.SQRT_HALF\n        wish_z*=D.SQRT_HALF\n    }\n    \n    if(grounded){\n        if(keys[' ']){\n            This.physics.body.velocity.y=2.5\n            grounded=false\n        }\n        \n        This.physics.body.velocity.x+=wish_x\n        This.physics.body.velocity.z+=wish_z\n        \n        This.physics.body.velocity.x/=Engine.deltaTime*20+1\n        This.physics.body.velocity.z/=Engine.deltaTime*20+1\n        \n    } else {\n        \n        if(grapple){\n            \n            This.physics.body.velocity.x+=wish_x*0.035\n            This.physics.body.velocity.z+=wish_z*0.035\n            \n        } else {\n            \n            This.physics.body.velocity.x+=wish_x*0.09\n            This.physics.body.velocity.z+=wish_z*0.09\n            \n            This.physics.body.velocity.x/=Engine.deltaTime+1\n            This.physics.body.velocity.z/=Engine.deltaTime+1\n        }\n    }\n    \n    if(This.physics.body.position.z<-180){\n        \n        This.physics.body.position.z=9999\n        This.physics.body.position.y=9999\n        t.innerHTML='You win!<br>Your time was '+time.toFixed(2)+'s'+(time>75?'<br>That was horrible!':'')\n        \n        window.setTimeout(()=>{\n            This.physics.body.position.y=-99\n        },3000)\n        \n    } else if(This.physics.body.position.y<-25&&!grapple){\n        \n        This.physics.body.position.set(0,2,0)\n        This.physics.body.velocity.setZero()\n        Engine.camera.yaw=0\n        Engine.camera.pitch=0\n        if(Engine.allObjects.GrapplingLine)\n            Engine.allObjects.GrapplingLine.render=0\n        window.grapple=0\n        time=0\n        \n    } else if(This.physics.body.position.z<99){\n        \n        time+=Engine.deltaTime\n        t.innerHTML=time.toFixed(2)\n    }\n    \n}"},"SkyboxShader":{"type":"script","lang":"glsl","code":"@ VertexShader {\n    \n    #version 300 es\n    precision mediump float;\n    \n    in vec2 vertPos;\n    \n    uniform mat4 viewMatrix;\n    \n    out vec3 pixDir;\n    \n    void main(){\n        \n        pixDir=inverse(mat3(viewMatrix))*vec3(vertPos,1);\n        gl_Position=vec4(vertPos,1,1);\n    }\n}\n\n@ FragmentShader {\n    \n    #version 300 es\n    precision mediump float;\n    \n    in vec3 pixDir;\n    \n    out vec4 FragColor;\n    \n    void main(){\n        \n        vec3 dir=normalize(pixDir);\n        FragColor=vec4(mix(vec3(0.25,0.25,0.25),vec3(0.5,0.8,1),smoothstep(-0.1,0.0,dir.y)),1);\n    }\n}@ VertexShader {\n    \n    #version 300 es\n    precision mediump float;\n    \n    in vec2 vertPos;\n    \n    uniform mat4 viewMatrix;\n    \n    out vec3 pixDir;\n    \n    void main(){\n        \n        pixDir=inverse(mat3(viewMatrix))*vec3(vertPos,1);\n        gl_Position=vec4(vertPos,1,1);\n    }\n}\n\n@ FragmentShader {\n    \n    #version 300 es\n    precision mediump float;\n    \n    in vec3 pixDir;\n    \n    out vec4 FragColor;\n    \n    void main(){\n        \n        vec3 dir=normalize(pixDir);\n        FragColor=vec4(mix(vec3(0.5,0.6,0.7),vec3(0.5,0.8,1),smoothstep(-0.1,0.0,dir.y)),1);\n    }\n}"},"GrapplingScript":{"type":"script","lang":"js","code":"window.grapple=0\nlet mesh,DEFAULT_QUAT=[0.707,0.707,0,0]\n\nExport.OnCreate = function(This, Engine){\n    \n    mesh=Engine.allObjects.GrapplingLine=Engine.CreateElement('mesh'),geo=Engine.CreateElement('geometry')\n    mesh.material='DefaultMaterial'\n    Engine.allObjects.GrapplingLine.children={Geo:geo}\n    geo.data.r=geo.data.g=geo.data.b=0\n    geo.data.type='box'\n    geo.data.w=geo.data.h=0.02\n    geo.data.l=1\n    Engine.InitalizeMesh(mesh)\n    Engine.InitalizeTransform(mesh)\n    \n    window.Grapple=function(e){\n        \n        mesh.render=false\n        \n        if(grapple){\n            \n            grapple=0\n            \n        } else {\n            let result=new CANNON.RaycastResult()\n            let from=new CANNON.Vec3()\n            from.copy(Engine.allObjects.Player.physics.body.position)\n            from.y+=0.5\n            let to=new CANNON.Vec3()\n            to.copy(from)\n            let r=1000\n            to.x-=Engine.camera.transform.localMatrix[2]*r\n            to.y-=Engine.camera.transform.localMatrix[6]*r\n            to.z-=Engine.camera.transform.localMatrix[10]*r\n                \n            Engine.physics.raycastClosest(from,to,{collisionFilterMask:1},result)\n            \n            if(!result.hasHit)return\n            \n            mesh.render=true\n            grapple={}\n            grapple.pos=[result.hitPointWorld.x,result.hitPointWorld.y,result.hitPointWorld.z]\n            grapple.vecPos=new CANNON.Vec3(...grapple.pos)\n            let player=Engine.allObjects.Player.physics.body\n            grapple.restLen=Math.hypot(grapple.pos[0]-player.position.x,grapple.pos[1]-player.position.y,grapple.pos[2]-player.position.z)\n        }\n    }\n    \n    Engine.canvas.onclick=Grapple\n}\n\nExport.OnUpdate = function(This, Engine){\n    \n    if(grapple){\n        \n        let cam=Engine.camera.transform.matrix.slice(12,15),delta=vec3.sub([],grapple.pos,cam),mag=Math.sqrt(delta[0]*delta[0]+delta[1]*delta[1]+delta[2]*delta[2]),_mag=1/mag\n        \n        delta[0]*=_mag\n        delta[1]*=_mag\n        delta[2]*=_mag\n        \n        let rx=Math.asin(-delta[1]),ry=Math.atan2(delta[0],delta[2])\n        \n        quat.fromEuler(This.transform.rotation,rx*D.TO_DEG,ry*D.TO_DEG,0)\n        mesh.transform.rotation=quat.invert(delta,quat.fromEuler(delta,Engine.camera.pitch,Engine.camera.yaw,0))\n        quat.multiply(This.transform.rotation,mesh.transform.rotation,This.transform.rotation)\n        \n        mat4.fromRotationTranslation(This.transform.localMatrix,This.transform.rotation,This.transform.position)\n        mat4.multiply(This.transform.matrix,This.parent.transform.matrix,This.transform.localMatrix)\n        \n        let tip=[0,0,0.2]\n        \n        vec3.transformMat4(tip,tip,This.transform.matrix)\n        \n        let __d={p1:grapple.pos,p2:tip},\n            _d=vec3.dist(__d.p1,__d.p2),\n            p=vec3.lerp([],__d.p1,__d.p2,0.5),\n            l=vec3.sub([],__d.p2,__d.p1)\n        vec3.scale(l,l,-1/_d)\n        let _y=Math.atan2(l[0],l[2]),pi=Math.asin(-l[1]),\n            q=quat.fromEuler([],pi*D.TO_DEG,_y*D.TO_DEG,0)\n        mesh.transform.rotation=q\n        mesh.transform.position=p\n        mesh.transform.scale[2]=_d\n        \n        let player=Engine.allObjects.Player.physics\n        player.body.position.vsub(grapple.vecPos)\n        player.body.position.scale(grapple.restLen/player.body.position.distanceTo(grapple.vecPos))\n        player.body.position.vadd(grapple.vecPos)\n        \n        let px=player.body.position.x,\n            py=player.body.position.y,\n            pz=player.body.position.z\n            x=player.body.position.x-grapple.vecPos.x,\n            y=player.body.position.y-grapple.vecPos.y,\n            z=player.body.position.z-grapple.vecPos.z,\n            d=grapple.restLen/Math.sqrt(x*x+y*y+z*z),\n            st=50\n        x*=d\n        y*=d\n        z*=d\n        \n        player.body.position.x=x+grapple.vecPos.x\n        player.body.position.y=y+grapple.vecPos.y\n        player.body.position.z=z+grapple.vecPos.z\n        \n        player.body.velocity.x+=(player.body.position.x-px)*st\n        player.body.velocity.y+=(player.body.position.y-py)*st\n        player.body.velocity.z+=(player.body.position.z-pz)*st\n        \n    } else {\n        \n        quat.slerp(This.transform.rotation,This.transform.rotation,DEFAULT_QUAT,0.1)\n        \n        mat4.fromRotationTranslation(This.transform.localMatrix,This.transform.rotation,This.transform.position)\n        mat4.multiply(This.transform.matrix,This.parent.transform.matrix,This.transform.localMatrix)\n    }\n}\n\n\n\n"}},"_hierarchy":{"Player":{"type":"mesh","material":"DefaultMaterial","transform":{"position":[0,2,0],"rotation":[0,0,0],"scale":[1,1,1]},"computeTransformations":true,"render":true,"wireframe":false,"castShadows":true,"castShadowsTo":"[]","defaultData":"[]","physics":{"usePhysics":true,"type":"DYNAMIC","mass":1,"collisionGroup":1,"collisionMask":"[0]","fixedRotation":true},"children":{"Camera":{"type":"camera","clearColor":[0,0,0,1],"transform":{"position":[0,0.5,0],"rotation":[0,0,0],"scale":[1,1,1]},"computeTransformations":true,"projectionType":"perspective","FOV":70,"near":0.01,"far":1000,"script":"CameraController","children":{"GrapplingHook":{"type":"mesh","material":"HookMaterial","transform":{"position":[0.5,-0.5,-1.2],"rotation":[0,0,0],"scale":[1,1,1]},"computeTransformations":false,"render":true,"wireframe":false,"castShadows":true,"castShadowsTo":"[]","defaultData":"[]","physics":{"usePhysics":false,"type":"DYNAMIC","mass":1,"collisionGroup":0,"collisionMask":"[]","fixedRotation":false},"children":{"GrapplingHookBody":{"type":"geometry","render":true,"data":{"type":"box","x":0,"y":0,"z":0,"w":0.2,"h":0.2,"l":0.4,"radius":0.5,"radius2":0.5,"height":1,"detail":1,"r":0.25,"g":0.25,"b":0.25,"rx":0,"ry":0,"rz":0,"sx":1,"sy":1,"sz":1,"obj":"","textureMapping":{"top":{"x":0,"y":0,"w":1,"h":1,"sw":1,"sh":1},"bottom":{"x":0,"y":0,"w":1,"h":1,"sw":1,"sh":1},"left":{"x":0,"y":0,"w":1,"h":1,"sw":1,"sh":1},"right":{"x":0,"y":0,"w":1,"h":1,"sw":1,"sh":1},"front":{"x":0,"y":0,"w":1,"h":1,"sw":1,"sh":1},"back":{"x":0,"y":0,"w":1,"h":1,"sw":1,"sh":1},"side":{"x":0,"y":0,"w":1,"h":1,"sw":1,"sh":1}},"data":"[]"},"autoUVBounds":true,"physics":{"usePhysics":true,"position":[0,0,0],"rotation":[0,0,0],"scale":[1,1,1]}}},"script":"GrapplingScript"}}},"Hitbox":{"type":"geometry","render":false,"data":{"type":"cylinder","x":0,"y":0,"z":0,"w":1,"h":1,"l":1,"radius":0.1,"radius2":0.1,"height":1,"detail":8,"r":1,"g":1,"b":1,"rx":90,"ry":0,"rz":0,"sx":1,"sy":1,"sz":1,"obj":"","textureMapping":{"top":{"x":0,"y":0,"w":1,"h":1,"sw":1,"sh":1},"bottom":{"x":0,"y":0,"w":1,"h":1,"sw":1,"sh":1},"left":{"x":0,"y":0,"w":1,"h":1,"sw":1,"sh":1},"right":{"x":0,"y":0,"w":1,"h":1,"sw":1,"sh":1},"front":{"x":0,"y":0,"w":1,"h":1,"sw":1,"sh":1},"back":{"x":0,"y":0,"w":1,"h":1,"sw":1,"sh":1},"side":{"x":0,"y":0,"w":1,"h":1,"sw":1,"sh":1}},"data":"[]"},"autoUVBounds":true,"physics":{"usePhysics":true,"position":[0,0,0],"rotation":[0,0,0],"scale":[1,1,1]}}},"script":"PlayerMovement"},"Mesh":{"type":"mesh","material":"DefaultMaterial","transform":{"position":[0,0,0],"rotation":[0,0,0],"scale":[1,1,1]},"computeTransformations":false,"render":true,"wireframe":false,"castShadows":true,"castShadowsTo":"[]","defaultData":"[]","physics":{"usePhysics":true,"type":"STATIC","mass":0,"collisionGroup":0,"collisionMask":"[1]","fixedRotation":false},"script":"MapGenerator","children":{}},"AmbientLight":{"type":"light","lightType":"ambient","transform":{"position":[0,0,0],"rotation":[0,0,0],"scale":[1,1,1]},"computeTransformations":true,"dynamic":false,"intensity":0.5,"color":[1,1,1],"attenuationPolynomial":"X*X","innerCone":-1,"outerCone":-1,"diffuseRemapScale":1,"diffuseRemapAdd":0,"illuminates":true,"illuminatesMaterials":"[]"},"DirectionalLight":{"type":"light","lightType":"directional","transform":{"position":[0,0,0],"rotation":[-60,20,0],"scale":[1,1,1]},"computeTransformations":true,"dynamic":false,"intensity":0.8,"color":[1,1,1],"attenuationPolynomial":"X*X","innerCone":-1,"outerCone":-1,"diffuseRemapScale":1,"diffuseRemapAdd":0,"illuminates":true,"illuminatesMaterials":"[]"}}},Engine={data:Data,deltaTime:0,time:0,then:0,timeMultiplier:Data._settings.timeMultiplier*0.001,maxDeltaTime:Data._settings.maxDeltaTime,minDeltaTime:Data._settings.minDeltaTime,width:canvas.width-0,height:canvas.height-0,aspect:(canvas.width-0)/(canvas.height-0),uniformedPrograms:{},canvas:canvas,div:div,physics:new CANNON.World(),cachedPowersOf2:[1,2,4,8,16,32,64,128,256,512,1024,2048,4096,8192,16384,32768,65536,131072,262144,524288,1048576,2097152,4194304,8388608,16777216,33554432,67108864,134217728,268435456,536870912,1073741824,2147483648]},nothing=()=>0,AllObjects,Materials={},Scripts={NothingScript:{OnCreate:nothing,OnUpdate:nothing,GetTexture:nothing,OnBeforeRender:nothing,OnAfterRender:nothing,OnMaterialSet:nothing}},Textures={},Meshes,Lights_static,Lights_dynamic,Shadowers,Pipeline=Data._pipeline,arrayParse=(s)=>typeof s==='object'?s:s.substring(1,s.length-1).split(',').map(x=>x.length?isNaN(Number(x))?x.trim():Number(x.trim()):undefined).filter(x=>x!==undefined),dynamicLightInfoAmount=0,dynamicLightUniformArray
+        Engine.texCanvas=new OffscreenCanvas(Data._settings.textureDrawingCanvasWidth,Data._settings.textureDrawingCanvasHeight)
+        Engine.texCTX=Engine.texCanvas.getContext('2d')
+        
+        Engine.physics.broadphase=new CANNON.SAPBroadphase(Engine.physics)
+        Engine.physics.broadphase.useBoundingBoxes=true
+        Engine.physics.gravity.set(...Data._settings.gravity)
+        Engine.physics.solver=new CANNON.GSSolver()
+        Engine.physics.quatNormalizeSkip=Data._settings.quatNormalizeSkip
+        Engine.physics.quatNormalizeFast=Data._settings.quatNormalizeFast
+        Engine.physics.defaultContactMaterial.friction=Data._settings.defaultFriction
+        Engine.physics.defaultContactMaterial.restitution=Data._settings.defaultRestitution
+        
+        Engine.noiseProperties={
+            octaves:4,
+            decay:0.5,
+            upscale:2
+        }
+        Engine.Hash_1=(x)=>{
+            let n=x*563.2522-2637.12356
+            return n-Math.floor(n)
+        }
+        Engine.Hash_2=(x,y)=>{
+            let n=(x*527.53851+y*439.522341-(x*y*257.611))
+            return n-Math.floor(n)
+        }
+        Engine.Hash_3=(x,y,z)=>{
+            let n=x*124.518+y*129.321+z*131.145-(x*y*100.836+z*201.51)
+            return n-Math.floor(n)
+        }
+        Engine.Smoothstep=(a,b,t)=>{
+            return (b-a)*t*t*(3-(t+t))+a
+        }
+        Engine.Noise1D_base=(x)=>{
+            let _x=Math.floor(x)
+            return Engine.Smoothstep(Engine.Hash_1(_x),Engine.Hash_1(_x+1),x-_x)
+        }
+        Engine.Noise2D_base=(x,y)=>{
+            let _x=Math.floor(x),_y=Math.floor(y),lt=Engine.Hash_2(_x,_y),lb=Engine.Hash_2(_x,_y+1),rt=Engine.Hash_2(_x+1,_y),rb=Engine.Hash_2(_x+1,_y+1),l=Engine.Smoothstep(lt,lb,y-_y),r=Engine.Smoothstep(rt,rb,y-_y)
+            return Engine.Smoothstep(l,r,x-_x)
+        }
+        Engine.Noise3D_base=(x,y,z)=>{
+            let _x=Math.floor(x),_y=Math.floor(y),_z=Math.floor(z),ltf=Engine.Hash_3(_x,_y,_z),rtf=Engine.Hash_3(_x+1,_y,_z),rbf=Engine.Hash_3(_x+1,_y+1,_z),rbb=Engine.Hash_3(_x+1,_y+1,_z+1),lbb=Engine.Hash_3(_x,_y+1,_z+1),ltb=Engine.Hash_3(_x,_y,_z+1),rtb=Engine.Hash_3(_x+1,_y,_z+1),lbf=Engine.Hash_3(_x,_y+1,_z),lt=Engine.Smoothstep(ltf,ltb,z-_z),lb=Engine.Smoothstep(lbf,lbb,z-_z),rt=Engine.Smoothstep(rtf,rtb,z-_z),rb=Engine.Smoothstep(rbf,rbb,z-_z),l=Engine.Smoothstep(lt,lb,y-_y),r=Engine.Smoothstep(rt,rb,y-_y)
+            
+            return Engine.Smoothstep(l,r,x-_x)
+        }
+        Engine.Noise1D=(x)=>{
+            let n=0,d=1,u=1,_x=x,t=0
+            for(let i=0;i<Engine.noiseProperties.octaves;i++){
+                n+=Engine.Noise1D_base(_x)*d
+                t+=d
+                d*=Engine.noiseProperties.decay
+                _x*=Engine.noiseProperties.upscale
+            }
+            return n/(t)
+        }
+        Engine.Noise2D=(x,y)=>{
+            let n=0,d=1,u=1,_x=x,_y=y,t=0
+            for(let i=0;i<Engine.noiseProperties.octaves;i++){
+                n+=(Engine.Noise2D_base(_x,_y)+Engine.Noise2D_base(_y*0.707107-_x*0.707107-100,_y*0.707107+_x*0.707107-100)+Engine.Noise2D_base(_y*-0.707107+_x*0.707107-200,_y*-0.707107-_x*0.707107-200))*d
+                t+=d
+                d*=Engine.noiseProperties.decay
+                _x*=Engine.noiseProperties.upscale
+                _y*=Engine.noiseProperties.upscale
+            }
+            return n/(t*3)
+        }
+        Engine.Noise3D=(x,y,z)=>{
+            let n=0,d=1,u=1,_x=x,_y=y,_z=z,t=0
+            for(let i=0;i<Engine.noiseProperties.octaves;i++){
+                n+=(Engine.Noise3D_base(_x,_y,_z)+Engine.Noise3D_base(_y*0.707107-_x*0.707107-100,_y*0.707107+_x*0.707107-100,_z-100)+Engine.Noise3D_base(_y*-0.707107+_x*0.707107-200,_y*-0.707107-_x*0.707107-200,_z-200))*d
+                t+=d
+                d*=Engine.noiseProperties.decay
+                _x*=Engine.noiseProperties.upscale
+                _y*=Engine.noiseProperties.upscale
+                _z*=Engine.noiseProperties.upscale
+            }
+            return n/(t*3)
+        }
+        
+        Engine.gl=D.getContext(canvas,Data._settings.contextAttributes)
+        D.viewport(0,0,Engine.width,Engine.height)
+        D.enable3D()
+        
+        Engine.materials=Materials
+        Engine.pipeline=Pipeline
+        Engine.scripts=Scripts
+        Engine.assets=Data._assets
+        Engine.textures=Textures
+        
+        Engine.CompileH=function(code){
+    let s='',arr=(code+' ').split('#'),isIn=0,definitions={},enabled=true
+    for(let i=0;i<arr.length;i++){
+        let c=arr[i],_ct=c.indexOf('tog')>-1
+        if(!enabled&&!_ct){s+='#'+arr[i];isIn=1;continue}
+        if(c.indexOf('#')>-1){console.log('Cannot nest #.');continue}
+        if(isIn){
+            let aA=c.indexOf('@')
+            if(aA>-1){
+                let v,kw=c.substring(0,aA)
+                switch(kw){
+                    default:console.log('Unknown @ keyword.');break
+                    case '':v='let';break
+                    case 'C':v='const';break
+                    case 'I_MAT':v='1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1';break
+                }
+                s+=v+(c[aA+1]===' '||kw!==''&&kw!=='C'?'':' ')+c.substring(aA+1,c.length)
+            }else{
+                let pI=c.indexOf('^'),n
+                if(pI<0)
+                    s+=Object.constructor('return '+c)()
+                else{
+                    let oper=c.indexOf('~')
+                    if(oper>-1){
+                        let params=c.substring(oper+1,pI).replaceAll('\\,','A_COMMA').split(','),repAmount=1
+                        n=c.substring(pI+1,c.length)
+                        for(let j in params){
+                            let p=params[j].trim(),baep=p.substring(0,p.indexOf(':')>-1?p.indexOf(':'):p.length),val=p.substring(p.indexOf(':')+1,p.length),repKey
+                            switch(baep.toLowerCase().trim()){
+                                case'copy':case'json_copy':n='JSON.parse(JSON.stringify('+n+'))';break
+                                case'repamount':case'repam':repAmount=val;break
+                                case'rep':case'repeat':{
+                                    let vals=val.replaceAll('\\','\n').repeat(repAmount).split('$'),_n=[],__n=n
+                                    n=''
+                                    for(let k=1;k<vals.length;k++)_n.push((__n+vals[k]).replaceAll('$',k-1))
+                                    for(let k=0;k<_n.length;k++){
+                                        if(_n[k].indexOf('<:')<0){n+=_n[k];continue}
+                                        let list=_n[k].split('<:')
+                                        n+=_n[k].substring(0,_n[k].indexOf('<:'))
+                                        for(let l=1;l<list.length;l++){
+                                            let pre=list[l].substring(0,list[l].indexOf(':>'))
+                                            n+=Object.constructor('return '+pre)()+list[l].substring(list[l].indexOf(':>')+2,list[l].length)
+                                        }
+                                    }
+                                    n=n.replaceAll('A_COMMA',',')
+                                }break
+                                case'pr':case'properties':case'prop':{
+                                    let vals=val.split('|'),_n=''
+                                    for(let k=0;k<vals.length;k++)_n+=n+(isNaN(Number(vals[k][0]))?'.'+vals[k]:isNaN(Number(vals[k]))?'["'+vals[k]+'"]':'['+vals[k]+']')+','
+                                    n=_n
+                                }break
+                                case'xyz':n=n+'.x,'+n+'.y,'+n+'.z';break
+                                case'012':n=n+'[0],'+n+'[1],'+n+'[2]';break
+                                case'0123':n=n+'[0],'+n+'[1],'+n+'[2],'+n+'[3]';break
+                                case'rplc':case'replace':n=n.replaceAll('$',val);break
+                                case'noc':case'nocommas':if(n[n.length-1]===',')n=n.substring(0,n.length-1);break
+                                case'def':case'define':definitions[val]=n;n='##';break
+                                case'use':n=definitions[n];break
+                                case'toggle':case'tog':enabled=!enabled;n+=enabled?'':'#';break
+                                default:console.log('Unknown parameter.');break
+                            }
+                        }
+                    }else{
+                        let params=c.substring(0,pI).split(',')
+                        n=Object.constructor('return '+c.substring(pI+1,c.length))()
+                        for(let j in params){
+                            let p=params[j].trim(),baep=p.substring(0,p.indexOf(':')>-1?p.indexOf(':'):p.length),val=p.substring(p.indexOf(':')+1,p.length)
+                            switch(baep.toLowerCase().trim()){
+                                case'fix':n=(n-0).toFixed(val);break
+                                case'def':case'define':definitions[val]=n;n='##';break
+                                case'use':n=definitions[n];break
+                                case'toggle':case'tog':enabled=!enabled;n=enabled?'':'#';break
+                                default:console.log('Unknown parameter.');break
+                            }
+                        }
+                    }
+                    s+=n
+                }
+                isIn=0
+            }
+        }else{
+            s+=c
+            isIn=1
+        }
+    }
+    return s.replaceAll('##','')
+}
+        
+        for(let i in Data._settings.dynamicLightsInfo)if(Data._settings.dynamicLightsInfo[i])dynamicLightInfoAmount+={position:3,rotation:3,color:3}[i]||1
+        
+        for(let i in Data._assets){
+            let s=Data._assets[i]
+            switch(s.type){
+                case 'script':
+                    Scripts[i]={}
+                    let c
+                    switch(s.lang){
+                        case 'js':
+                            c=Object.constructor('This','Engine','let Export={};'+Engine.CompileH('#tog^#'+s.code)+'\nreturn Export')()
+                            Scripts[i].OnCreate=c.OnCreate||nothing
+                            Scripts[i].OnUpdate=c.OnUpdate||nothing
+                            Scripts[i].GetTexture=c.GetTexture||nothing
+                            Scripts[i].OnBeforeRender=c.OnBeforeRender||nothing
+                            Scripts[i].OnAfterRender=c.OnAfterRender||nothing
+                            Scripts[i].OnMaterialSet=c.OnMaterialSet||nothing
+                        break
+                        case 'glsl':
+                            c=s.code.trim().split('@')
+                            for(let j in c){
+                                let cj=(c[j]=c[j].trim()).substring(c[j].indexOf('{')+1,c[j].length-1),test=c[j].substring(0,c[j].indexOf('{'))
+                                if(test.indexOf('VertexShader')>-1)
+                                    Scripts[i].vsh=cj
+                                else if(test.indexOf('FragmentShader')>-1)
+                                    Scripts[i].fsh=cj
+                            }
+                        break
+                        case 'txt':
+                            Scripts[i].text=s.code
+                        break
+                    }
+                break
+                case 'renderTarget':
+                    s.tex=D.createTexture(Math.ceil(s.resType==='define'?s.width:Engine.width*s.width),Math.ceil(s.resType==='define'?s.height:Engine.height*s.height),null,s.filtering,s.wrapping,s.internalFormat,s.format,s.memoryType)
+                break
+                case 'texture':Textures[i]=s;break
+            }
+        }
+        let lastParent,amountOfShadowers=0,recurse=function(o){
+            for(let i in o){
+                switch(o[i].type){
+                    case 'mesh':
+                        Meshes[i]=o[i]
+                    break
+                    case 'geometry':
+                    break
+                    case 'camera':
+                        Engine.camera=o[i]
+                    break
+                    case 'shadower':
+                        Shadowers[i]=o[i]
+                        Shadowers[i].meshes=[]
+                        amountOfShadowers++
+                    break
+                    case 'light':
+                        if(o[i].dynamic)Lights_dynamic[i]=o[i];else Lights_static[i]=o[i]
+                    break
+                }
+                if(Data._hierarchy[i])lastParent=undefined
+                o[i].parent=lastParent
+                o[i].name=i
+                o[i].script??='NothingScript'
+                if(o[i].type!=='geometry')AllObjects[i]=o[i]
+                if(o[i].children){
+                    lastParent=o[i]
+                    recurse(o[i].children)
+                }
+            }
+        }
+        Engine.CompileHierarchy=()=>{
+            
+            AllObjects={}
+            Meshes={}
+            Lights_static={}
+            Lights_dynamic={}
+            Shadowers={}
+            
+            recurse(Data._hierarchy)
+            
+            dynamicLightUniformArray=0
+            for(let i in Lights_dynamic)
+                dynamicLightUniformArray+=dynamicLightInfoAmount
+            Engine.dynamicLightsAmount=dynamicLightUniformArray
+            dynamicLightUniformArray=new Float32Array(dynamicLightUniformArray)
+            
+            Engine.allObjects=AllObjects
+            Engine.meshes=Meshes
+            Engine.lights_static=Lights_static
+            Engine.lights_dynamic=Lights_dynamic
+            Engine.shadowers=Shadowers
+        }
+        Engine.CompileHierarchy()
+        
+        Engine.shadowMapProgram=D.createProgram(`#version 300 es
+                precision mediump float;
+in vec3 vertPos;
+in vec3 vertNormal;
+in vec3 vertColor;
+in vec2 vertUV;${(function(){let s='';for(let i=0;i<1;i++)s+='in float vertData_'+i+';';return s})()}
+uniform mat4 modelMatrix;
+uniform mat4 viewMatrix;
+                void main(){
+                    gl_Position=viewMatrix*modelMatrix*vec4(vertPos,1);
+                }`,`#version 300 es
+                precision mediump float;
+out vec4 FragColor;
+                
+                void main(){
+                    FragColor=vec4(0,0,0,1);
+                }`,1)
+        
+        Engine.CompilePipeline=()=>{
+            for(let i in Pipeline){
+                let p=Pipeline[i]
+                switch(p.type){
+                    case 'RenderShadowMaps':
+                        p.run=renderShadowMaps
+                    break
+                    case 'ComputeTransformations':
+                        p.run=computeTransformations
+                    break
+                    case 'UpdatePhysics':
+                        p.run=()=>Engine.physics.step(Engine.deltaTime)
+                    break
+                    case 'MainRender':
+                        
+                        Engine.mainRenderOutputFB=null
+                        
+                        p.outputs=arrayParse(p.outputs)
+                        if(p.outputs.length>1){
+                            
+                            Engine.mainRenderOutputFB=D.createFramebuffer(false,p.depthBuffer)
+                            let draws=[]
+                            for(let i in p.outputs)
+                                draws.push(Data._assets[p.outputs[i]].tex)
+                            D.drawBuffers(draws)
+                        }else if(p.outputs.length===1){
+                            
+                            Engine.mainRenderOutputFB=D.createFramebuffer(Data._assets[p.outputs[0]].tex,p.depthBuffer)
+                        }
+                        
+                        p.run=MainRender
+                    break
+                    case 'PostProcessor':
+                        let texArr=[],out=null,w,h
+                        p.outputs=arrayParse(p.outputs)
+                        if(p.outputs.length>1){
+                            
+                            out=D.createFramebuffer(false,p.depthBuffer)
+                            let draws=[]
+                            for(let i in p.outputs)
+                                draws.push(Data._assets[p.outputs[i]].tex)
+                            D.drawBuffers(draws)
+                            
+                        }else if(p.outputs.length===1){
+                            
+                            out=D.createFramebuffer(Data._assets[p.outputs[0]].tex,p.depthBuffer)
+                        }
+                        
+                        if(out){
+                            w=Data._assets[p.outputs[0]].tex.width
+                            h=Data._assets[p.outputs[0]].tex.height
+                        }else {
+                            w=Engine.width
+                            h=Engine.height
+                        }
+                        D.viewport(0,0,w,h)
+                        p.program=D.createProgram(Scripts[p.script].vsh,Scripts[p.script].fsh,1)
+                        p.inputs=arrayParse(p.inputs)
+                        for(let i in p.inputs){
+                            texArr.push(i,Data._assets[p.inputs[i]].tex)
+                            D.setUniform('input_'+i,i)
+                        }
+                        p.run=()=>{
+                            D.useProgram(p.program)
+                            D.bindFramebuffer(out)
+                            D.viewport(0,0,w,h)
+                            D.activeTextures(texArr)
+                            D.setUniform('time',[Engine.time])
+                            D.setUniform('viewMatrix',Engine.camera.transform.viewMatrix)
+                            D.renderMesh(screenMesh)
+                        }
+                    break
+                }
+            }
+        }
+        Engine.CompilePipeline()
+        
+        let screenMesh=D.createMesh(D.createMeshData({meshes:[{type:'plane',x:0,y:0,z:0,size:2,r:0,g:0,b:0,rx:90,ry:0,rz:0}],order:['x','y']}),[['vertPos',2,8,0]]),data=null
+        
+        Engine.GetAsset=(i)=>Data._assets[i]
+        Engine.GetObject=(i)=>AllObjects[i]
+        Engine.GetPass=(i)=>Data._pipeline[i]
+        
+        Engine.CreateElement=(type)=>({material:{type:'material',specularExponent:300,specularIntensity:0.75,extraDataFormat:'[]',vertexData:{position:true,normal:true,color:true,uv:true},texture:'[]',normalMap:'',instancedDataFormat:'[]',recieveShadows:true,recieveShadowsFrom:'[]'},renderTarget:{type:'renderTarget',width:1,height:1,resType:'scale'},texture:{type:'texture',width:128,height:128,filtering:'NEAREST',wrapping:'REPEAT',internalFormat:'RGBA',format:'RGBA',memoryType:'UNSIGNED_BYTE',mipmapping:true},block:{type:'block',transform:{position:[0,0,0],rotation:[0,0,0],scale:[1,1,1]},computeTransformations:true},camera:{type:'camera',clearColor:[0,0,0,1],transform:{position:[0,0,0],rotation:[0,0,0],scale:[1,1,1]},computeTransformations:true,projectionType:'perspective',FOV:70,near:0.01,far:1000},shadower:{type:'shadower',transform:{position:[0,0,0],rotation:[0,0,0],scale:[1,1,1]},computeTransformations:true,projectionType:'perspective',FOV:50,near:1,far:25,computeShadowMap:true,width:512,height:512,blurSamples:1,blurRadius:0.001,intensity:0.35,biasScale:0.1,biasAdd:0.001},mesh:{type:'mesh',material:'DefaultMaterial',transform:{position:[0,0,0],rotation:[0,0,0],scale:[1,1,1]},computeTransformations:true,render:true,wireframe:false,castShadows:true,castShadowsTo:'[]',defaultData:'[]',physics:{usePhysics:false,type:'DYNAMIC',mass:1,collisionGroup:0,collisionMask:'[]',fixedRotation:false}},geometry:{type:'geometry',render:true,data:{type:'sphere',x:0,y:0,z:0,w:1,h:1,l:1,radius:0.5,radius2:0.5,height:1,detail:1,r:1,g:1,b:1,rx:0,ry:0,rz:0,sx:1,sy:1,sz:1,obj:'',textureMapping:D.DTMPING_(),data:'[]'},autoUVBounds:true,physics:{usePhysics:true,position:[0,0,0],rotation:[0,0,0],scale:[1,1,1]}},light:{type:'light',lightType:'point',transform:{position:[0,0,0],rotation:[0,0,0],scale:[1,1,1]},computeTransformations:true,dynamic:false,intensity:1,color:[1,1,1],attenuationPolynomial:'X*X',innerCone:-1,outerCone:-1,diffuseRemapScale:1,diffuseRemapAdd:0,illuminates:true,illuminatesMaterials:'[]'},UpdatePhysics:{type:'UpdatePhysics'},ComputeTransformations:{type:'ComputeTransformations'},RenderShadowMaps:{type:'RenderShadowMaps'},MainRender:{type:'MainRender',outputs:'[]',framebufferDepthBuffer:true},PostProcessor:{type:'PostProcessor',inputs:'[]',outputs:'[]',depthBuffer:false,filtering:'NEAREST',wrapping:'CLAMP_TO_EDGE',internalFormat:'RGBA',format:'RGBA',memoryType:'UNSIGNED_BYTE'}})[type]
+        
+        function InitalizeTexture(m){
+            
+            if(m.script)data=Scripts[m.script].GetTexture(Engine.texCTX,Engine)
+            m.texture=D.createTexture(m.width,m.height,data,m.filtering,m.wrapping,m.internalFormat,m.format,m.memoryType,m.mipmapping)
+        }
+        
+        for(let i in Textures)InitalizeTexture(Textures[i])
+        Engine.InitalizeTexture=InitalizeTexture
+        
+        function InitalizeMaterial(m){
+            Materials[m.name]=m
+            m.shadowers=[]
+            m.activeTexturesArr=[]
+            m.recieveShadowsFrom=arrayParse(m.recieveShadowsFrom)
+            m.extraDataFormat=arrayParse(m.extraDataFormat)
+            m.instancedDataFormat=arrayParse(m.instancedDataFormat)
+            m.texture=arrayParse(m.texture)
+            let c=0
+            for(let i in m.texture)
+                m.activeTexturesArr.push(c++,Data._assets[m.texture[i]].texture)
+            if(m.normalMap.length)
+                m.activeTexturesArr.push(c++,Data._assets[m.normalMap].texture)
+            let sc=c
+            for(let i in Shadowers)
+                if(m.recieveShadows||m.recieveShadowsFrom.indexOf(i)>-1){
+                    m.shadowers.push(Shadowers[i])
+                    m.activeTexturesArr.push(c++,Shadowers[i].tex)
+                }
+            let hardcode=(s)=>s.replaceAll('HARDCODED_VERTEX_ATTRIBUTES',(function(){
+                    let s=''
+                    
+                    if(m.vertexData.position)s+='in vec3 vertPos;'
+                    if(m.vertexData.normal)s+='in vec3 vertNormal;'
+                    if(m.vertexData.color)s+='in vec3 vertColor;'
+                    if(m.vertexData.uv)s+='in vec2 vertUV;'
+                    
+                    for(let i in m.extraDataFormat){
+                        let d=m.extraDataFormat[i]-0
+                        s+='in '+['','float','vec2','vec3','vec4'][d]+' vertData_'+i+';'
+                    }
+                return s
+                })()).replaceAll('HARDCODED_INSTANCED_ATTRIBUTES',(function(){
+                    let s='',attribs=[],offset=0
+                    for(let i in m.instancedDataFormat){
+                        let d=m.instancedDataFormat[i]-0
+                        s+='in '+['','float','vec2','vec3','vec4'][d]+' instanceData_'+i+';'
+                        attribs.push(['instanceData_'+i,d,0,offset])
+                        offset+=d<<2
+                    }
+                    for(let i in attribs){
+                        attribs[i][2]=offset
+                    }
+                    m.instancedAttribs=attribs.length?attribs:0
+                    return s
+                })()).replaceAll('HARDCODED_UNIFORMS',(
+                    (()=>{
+                        let s=''
+                        for(let i in m.texture)s+='uniform sampler2D albedoTexture_'+i+';'
+                        return s
+                    })())+(m.normalMap.length?'uniform sampler2D normalTexture;':'')+(function(){
+                    let s='',DLIL=0
+                    for(let i in Lights_dynamic){
+                        let l=Lights_dynamic[i]
+                        
+                        l.illuminatesMaterials=arrayParse(l.illuminatesMaterials)
+                        if(l.illuminates||l.illuminatesMaterials.indexOf(m.name)>-1)DLIL+=dynamicLightInfoAmount
+                        
+                    }
+                    s+=DLIL?'uniform float dynamicLightInfoArray['+DLIL+'];':''
+                    for(let i in m.shadowers)
+                        s+='uniform sampler2D shadowTexture_'+i+';'
+                    return s
+                })()).replaceAll('HARDCODED_SPECULAR_EXPONENT',D.floatize(m.specularExponent)).replaceAll('HARDCODED_SPECULAR_INTENSITY',D.floatize(m.specularIntensity)).replaceAll('HARDCODED_STATIC_LIGHT_COMPUTATIONS',(function(){
+                    let s=''
+                    for(let i in Lights_static){
+                        let l=Lights_static[i]
+                        if(!l.illuminates&&l.illuminatesMaterials.indexOf(m.name)<0)continue
+                        switch(l.lightType){
+                            case 'ambient':
+                                s+='color+=applyAmbientLight(pix,vec3('+l.color.join(',')+'),'+D.floatize(l.intensity)+');'
+                            break
+                            case 'directional':
+                                s+='color+=applyDirectionalLight(pix,normal,vec3('+l.transform.direction.join(',')+'),vec3('+l.color.join(',')+'),'+D.floatize(l.intensity)+','+D.floatize(l.diffuseRemapScale)+','+D.floatize(l.diffuseRemapAdd)+');'
+                            break
+                            case 'point':
+                                s+='vec3 _'+i+'toLight=vec3('+l.transform.position.join(',')+')-pixPos;float _'+i+'x=length(_'+i+'toLight);_'+i+'toLight/=_'+i+'x;color+=applyPointLight(_'+i+'toLight,'+l.attenuationPolynomial.trim().replaceAll('X','_'+i+'x')+',pix,normal,vec3('+l.transform.direction.join(',')+'),vec3('+l.color.join(',')+'),'+D.floatize(l.intensity)+','+D.floatize(l.innerCone)+','+D.floatize(l.outerCone)+','+D.floatize(l.diffuseRemapScale)+','+D.floatize(l.diffuseRemapAdd)+');'
+                            break
+                        }
+                    }
+                    return s
+                })()).replaceAll('HARDCODED_DYNAMIC_LIGHT_COMPUTATIONS',(function(){
+                    let s='',index=0,key=Data._settings.dynamicLightsInfo,DLIA='dynamicLightInfoArray'
+                    for(let i in Lights_dynamic){
+                        let l=Lights_dynamic[i],id=index
+                        l.index=index
+                        index+=dynamicLightInfoAmount
+                        if(!l.illuminates&&l.illuminatesMaterials.indexOf(m.name)<0)continue
+                        
+                        let POS=key.position?DLIA+'['+(id++)+'],'+DLIA+'['+(id++)+'],'+DLIA+'['+(id++)+']':l.transform.position.join(','),
+                            ROT=key.rotation?DLIA+'['+(id++)+'],'+DLIA+'['+(id++)+'],'+DLIA+'['+(id++)+']':l.transform.direction.join(','),
+                            INS=key.intensity?DLIA+'['+(id++)+']':D.floatize(l.intensity),
+                            COL=key.color?DLIA+'['+(id++)+'],'+DLIA+'['+(id++)+'],'+DLIA+'['+(id++)+']':l.transform.color.join(','),
+                            IC=key.innerCone?DLIA+'['+(id++)+']':D.floatize(l.innerCone),
+                            OC=key.outerCone?DLIA+'['+(id++)+']':D.floatize(l.outerCone),
+                            DRS=key.diffuseRemapScale?DLIA+'['+(id++)+']':D.floatize(l.diffuseRemapScale),
+                            DRA=key.diffuseRemapAdd?DLIA+'['+(id++)+']':D.floatize(l.diffuseRemapAdd)
+                        
+                        switch(l.lightType){
+                            case 'ambient':
+                                s+='color+=applyAmbientLight(pix,vec3('+COL+'),'+INS+');'
+                            break
+                            case 'directional':
+                                s+='color+=applyDirectionalLight(pix,normal,vec3('+ROT+'),vec3('+COL+'),'+INS+','+DRS+','+DRA+');'
+                            break
+                            case 'point':
+                                s+='vec3 _'+i+'toLight=vec3('+POS+')-pixPos;float _'+i+'x=length(_'+i+'toLight);_'+i+'toLight/=_'+i+'x;color+=applyPointLight(_'+i+'toLight,'+l.attenuationPolynomial.trim().replaceAll('X','_'+i+'x')+',pix,normal,vec3('+ROT+'),vec3('+COL+'),'+INS+','+IC+','+OC+','+DRS+','+DRA+');'
+                            break
+                        }
+                    }
+                return s})()).replaceAll('HARDCODED_NORMAL_MAP_COMPUTATIONS',(()=>m.normalMap.length?'vec3 _tan=cross(normal,vec3(0,0.9999999,0.0000001));vec3 _bitan=cross(normal,_tan);mat3 _tbn=mat3(_tan,_bitan,normal);normal=_tbn*(texture(normalTexture,uv).rgb*2.0-1.0);':'')()).replaceAll('HARDCODED_SHADOW_COMPUTATIONS',(()=>{
+                    let s=''
+                    for(let i in m.shadowers){
+                        let l=m.shadowers[i]
+                        s+='shadow*=applyShadow(shadowTexture_'+i+',mat4('+l.transform.viewMatrix.join(',')+'),vec3('+l.transform.matrix.slice(12,15).join(',')+'),normal,'+(l.blurSamples|0)+','+D.floatize(l.blurRadius/(l.blurSamples||1))+','+D.floatize(l.intensity/((l.blurSamples*2+1)*(l.blurSamples*2+1)))+','+D.floatize(l.biasScale)+','+D.floatize(l.biasAdd)+');'}
+                    return s
+                })())
+            
+            m.program=m.script?D.createProgram(hardcode(Scripts[m.script].vsh),hardcode(Scripts[m.script].fsh),1):D.createProgram(hardcode(`#version 300 es\nprecision mediump float;HARDCODED_VERTEX_ATTRIBUTESHARDCODED_INSTANCED_ATTRIBUTESuniform mat4 modelMatrix;uniform mat4 viewMatrix;out vec3 pixPos;out vec3 pixNormal;out vec3 pixColor;out vec2 pixUV;void main(){vec4 pos=modelMatrix*vec4(vertPos,1);pixPos=pos.xyz;pixNormal=mat3(modelMatrix)*vertNormal;pixColor=vertColor;pixUV=vertUV;gl_Position=viewMatrix*pos;}`),hardcode(`#version 300 es
+precision mediump float;
+
+in vec3 pixPos;
+in vec3 pixNormal;
+in vec3 pixColor;
+in vec2 pixUV;
+    
+uniform vec3 camPos;
+
+HARDCODED_UNIFORMS
+
+out vec4 FragColor;
+
+vec3 applyAmbientLight(vec3 pix,vec3 col,float inst){
+    return pix*col*inst;
+}
+vec3 applyDirectionalLight(vec3 pix,vec3 normal,vec3 dir,vec3 col,float inst,float diffuseRemapScale,float diffuseRemapAdd){
+    float diffuse=max(dot(-dir,normal)*diffuseRemapScale+diffuseRemapAdd,0.0);
+    vec3 toLight=dir;
+    float specular=pow(max(dot(normalize(-dir+normalize(camPos-pixPos)),normal),0.0),HARDCODED_SPECULAR_EXPONENT);
+    return (diffuse*pix+specular*HARDCODED_SPECULAR_INTENSITY)*inst*col;
+}
+vec3 applyPointLight(vec3 toLight,float x,vec3 pix,vec3 normal,vec3 dir,vec3 col,float inst,float innerCone,float outerCone,float diffuseRemapScale,float diffuseRemapAdd){
+    float diffuse=max(dot(toLight,normal)*diffuseRemapScale+diffuseRemapAdd,0.0);
+    float specular=pow(max(dot(normalize(toLight+normalize(camPos-pixPos)),normal),0.0),HARDCODED_SPECULAR_EXPONENT);
+    
+    float conal=smoothstep(outerCone,innerCone,dot(toLight,-dir));
+    return (diffuse*pix+specular*HARDCODED_SPECULAR_INTENSITY)*conal*inst*col/x;
+}
+float applyShadow(sampler2D tex,mat4 mat,vec3 pos,vec3 normal,int blurSamples,float blurRadius,float inst,float biasScale,float biasAdd){
+    
+    vec4 proj=mat*vec4(pixPos,1);
+    proj.xyz/=proj.w;
+    proj.xyz=proj.xyz*0.5+0.5;
+    
+    float currentDepth=proj.z-max((0.5-dot(normalize(pos-pixPos),normal))*biasScale,biasAdd);
+    float shadow=1.0;
+    
+    for(int y=-blurSamples;y<=blurSamples;y++){
+        for(int x=-blurSamples;x<=blurSamples;x++){
+            float projDepth=texture(tex,proj.xy+vec2(x,y)*blurRadius).r;
+            if(projDepth<=currentDepth)
+                shadow-=inst;
+        }
+    }
+    if(proj.z>1.0||proj.x<0.0||proj.x>1.0||proj.y<0.0||proj.y>1.0) shadow=1.0;
+    return shadow;
+}
+
+void main(){
+    
+    float shadow=1.0;
+    vec2 uv=pixUV;
+    vec3 normal=normalize(pixNormal);
+    vec3 color=vec3(0);
+    vec3 pix=pixColor;
+    
+    HARDCODED_SHADOW_COMPUTATIONS
+    
+    HARDCODED_NORMAL_MAP_COMPUTATIONS
+    
+    HARDCODED_STATIC_LIGHT_COMPUTATIONS
+    HARDCODED_DYNAMIC_LIGHT_COMPUTATIONS
+    
+    FragColor=vec4(color*shadow,1);
+}`),1)
+            D.activeTextures(m.activeTexturesArr)
+            for(let i in m.shadowers)
+                D.setUniform('shadowTexture_'+i,(i-0)+sc)
+            for(let i in m.texture)D.setUniform('albedoTexture_'+i,i)
+            if(m.normalMap)D.setUniform('normalTexture',m.texture.length)
+            
+        }
+        Engine.InitalizeMaterial=InitalizeMaterial
+        
+        function InitalizeMesh(m){
+            Meshes[m.name]=m
+            m.data=[]
+            if(m.physics.usePhysics){
+                let p=m.physics,mask=1
+                p.collisionMask=arrayParse(p.collisionMask)
+                for(let i in p.collisionMask)mask|=Engine.cachedPowersOf2[p.collisionMask[i]]
+                p.body=new CANNON.Body({
+                    fixedRotation:p.fixedRotation,
+                    position:new CANNON.Vec3(...m.transform.position),
+                    quaternion:new CANNON.Quaternion(...quat.fromEuler([],...m.transform.rotation)),
+                    mass:p.mass,
+                    collisionFilterGroup:Engine.cachedPowersOf2[p.collisionGroup],
+                    collisionFilterMask:mask,
+                    type:CANNON.Body[p.type]
+                })
+            }
+            m.shadowers=[]
+            m.castShadowsTo=arrayParse(m.castShadowsTo)
+            for(let i in Shadowers){
+                if(m.castShadows||m.castShadowsTo.indexOf(i)>-1){
+                    Shadowers[i].meshes.push(m)
+                    m.shadowers.push(Shadowers[i])
+                }
+            }
+            for(let i in m.children){
+                let o=m.children
+                if(o[i].type!=='geometry')continue
+                
+                if(m.physics.usePhysics&&o[i].physics.usePhysics){
+                    let p=o[i].physics,a=new CANNON.Vec3(...vec3.add([],p.position,[o[i].data.x,o[i].data.y,o[i].data.z])),b=new CANNON.Quaternion(...quat.fromEuler([],...vec3.add([],p.rotation,[o[i].data.rx||0,o[i].data.ry||0,(o[i].data.rz||0)+(o[i].data.type==='cylinder'?180/o[i].data.detail:0)])))
+                    switch(o[i].data.type){
+                        case 'box':m.physics.body.addShape(new CANNON.Box(new CANNON.Vec3(Math.abs(o[i].data.w*0.5*p.scale[0]),Math.abs(o[i].data.h*0.5*p.scale[1]),Math.abs(o[i].data.l*0.5*p.scale[2]))),a,b)
+                        break
+                        case 'sphere':m.physics.body.addShape(new CANNON.Sphere(Math.abs(o[i].data.radius*p.scale[0])),a,b)
+                        break
+                        case 'cylinder':m.physics.body.addShape(new CANNON.Cylinder(Math.abs(o[i].data.radius*p.scale[0]),Math.abs(o[i].data.radius2*p.scale[0]),Math.abs(o[i].data.height*p.scale[1]),o[i].data.detail),a,b)
+                        break
+                    }
+                }
+                if(o[i].render){
+                    o[i].data.data=arrayParse(o[i].data.data)
+                    if(o[i].autoUVBounds)
+                        for(let j in o[i].data.textureMapping){
+                            let tm=o[i].data.textureMapping[j]
+                            tm.w=tm.h=undefined
+                        }
+                    if(Scripts[o[i].data.obj])o[i].data.obj=Scripts[o[i].data.obj].text
+                    m.data.push(o[i].data)
+                }
+            }
+            let order=[],offset=0,mat=Materials[m.material]
+            if(mat.vertexData.position)order.push('x','y','z')
+            if(mat.vertexData.normal)order.push('nx','ny','nz')
+            if(mat.vertexData.color)order.push('r','g','b')
+            if(mat.vertexData.uv)order.push('u','v')
+            
+            for(let i=0,_i=0;i<mat.extraDataFormat.length;i++){
+                for(let j=0;j<mat.extraDataFormat[i]-0;j++){
+                    order.push('data_'+(_i++))
+                }
+            }
+            
+            let stride=order.length<<2,vertData=[],extraAttribs=[]
+            
+            if(mat.vertexData.position){vertData.push(['vertPos',3,stride,offset]);offset+=12}
+            if(mat.vertexData.normal){vertData.push(['vertNormal',3,stride,offset]);offset+=12}
+            if(mat.vertexData.color){vertData.push(['vertColor',3,stride,offset]);offset+=12}
+            if(mat.vertexData.uv){vertData.push(['vertUV',2,stride,offset]);offset+=8}
+            
+            for(let i in mat.extraDataFormat){
+                let d=mat.extraDataFormat[i]-0
+                vertData.push(['vertData_'+i,d,stride,offset])
+                offset+=d<<2
+            }
+            
+            m.defaultData=arrayParse(m.defaultData)
+            m.mesh=D.createMesh(D.createMeshData({meshes:m.data,order:order,defaultData:m.defaultData,wireframe:m.wireframe}),[...vertData],mat.instancedAttribs)
+            if(m.physics.usePhysics){
+                Engine.physics.removeBody(m.physics.body)
+                Engine.physics.addBody(m.physics.body)
+            }
+        }
+        Engine.InitalizeMesh=InitalizeMesh
+        
+        function InitalizeTransform(o){
+            o.script??='NothingScript'
+            o.transform={localMatrix:D.createIdentityMatrix(),matrix:D.createIdentityMatrix(),position:o.transform.position,rotation:quat.fromEuler([],...o.transform.rotation),scale:o.transform.scale}
+            if(o.type==='camera'||o.type==='shadower'){
+                
+                o.computeProjectionMatrix=()=>o.transform.projectionMatrix=(o.projectionType==='orthographic'?mat4.ortho(D.createIdentityMatrix(),-o.FOV*Engine.aspect,o.FOV*Engine.aspect,-o.FOV/Engine.aspect,o.FOV/Engine.aspect,o.near,o.far):D.perspectiveMatrix(o.FOV,o.type==='camera'?Engine.aspect:o.width/o.height,o.near,o.far))
+                o.computeProjectionMatrix()
+                
+                o.transform.viewMatrix=D.createIdentityMatrix()
+                
+                if(o.type==='shadower'){
+                    o.tex=D.createTexture(o.width,o.height,null,'NEAREST','CLAMP_TO_EDGE','DEPTH_COMPONENT32F','DEPTH_COMPONENT','FLOAT')
+                    o.fb=D.createFramebuffer(o.tex,false,'DEPTH_ATTACHMENT')
+                }
+            }else if(o.type==='light')o.transform.direction=[0,0,-1]
+        }
+        Engine.InitalizeTransform=InitalizeTransform
+        
+        canvas.onresize=function(){
+            Engine.width=canvas.clientWidth
+            Engine.height=canvas.clientHeight
+            Engine.camera.computeProjectionMatrix()
+            D.viewport(0,0,Engine.width,Engine.height)
+        }
+        
+        D.bindFramebuffer(null)
+        
+        function computeTransformations(is1stFrame){
+            for(let i in AllObjects){
+                let o=AllObjects[i],ot=o.transform
+                if(!is1stFrame) Scripts[o.script].OnUpdate(o,Engine)
+                
+                if(!o.computeTransformations&&!is1stFrame)continue
+                if(o.physics&&o.physics.usePhysics&&o.physics.body){
+                    let b=o.physics.body
+                    b.quaternion.normalize()
+                    ot.position[0]=b.position.x
+                    ot.position[1]=b.position.y
+                    ot.position[2]=b.position.z
+                    ot.rotation[0]=b.quaternion.x
+                    ot.rotation[1]=b.quaternion.y
+                    ot.rotation[2]=b.quaternion.z
+                    ot.rotation[3]=b.quaternion.w
+                }
+                mat4.fromRotationTranslationScale(ot.localMatrix,ot.rotation,ot.position,ot.scale)
+                
+                if(o.parent)mat4.multiply(ot.matrix,o.parent.transform.matrix,ot.localMatrix);else mat4.copy(ot.matrix,ot.localMatrix)
+                
+                if(o.type==='camera'||o.type==='shadower'){
+                    
+                    mat4.multiply(ot.viewMatrix,ot.projectionMatrix,mat4.invert(ot.localMatrix,ot.matrix))
+                    
+                }else if(o.type==='light'){
+                    
+                    vec3.transformQuat(ot.direction,D.NEG_Z,ot.rotation)
+                    // never-nesters fear me
+                    if(o.dynamic){let idx=o.index;dynamicLightUniformArray[idx++]=ot.position[0];dynamicLightUniformArray[idx++]=ot.position[1];dynamicLightUniformArray[idx++]=ot.position[2];dynamicLightUniformArray[idx++]=o.color[0];dynamicLightUniformArray[idx++]=o.color[1];dynamicLightUniformArray[idx++]=o.color[2];}
+                }
+            }
+        }
+        function renderShadowMaps(is1stFrame){
+            if(amountOfShadowers){
+                D.useProgram(Engine.shadowMapProgram)
+                D.cullFace('BACK')
+                for(let i in Shadowers){
+                    let sha=Shadowers[i]
+                    if(!sha.computeShadowMap&&!is1stFrame)continue
+                    D.bindFramebuffer(sha.fb)
+                    D.clear(0,0,0,1)
+                    D.viewport(0,0,sha.width,sha.height)
+                    D.setUniform('viewMatrix',sha.transform.viewMatrix)
+                    for(let j in sha.meshes){
+                        let mes=sha.meshes[j]
+                        D.setUniform('modelMatrix',mes.transform.matrix)
+                        D.renderMesh(mes.mesh)
+                    }
+                }
+                D.viewport(0,0,Engine.width,Engine.height)
+            }
+        }
+        function MainRender(){
+            D.bindFramebuffer(Engine.mainRenderOutputFB)
+            
+            D.clear(...Engine.camera.clearColor)
+            
+            Engine.uniformedPrograms={}
+            Engine.lastUsedProgram=0
+            for(let i in Meshes){
+                if(!Meshes[i].render) continue
+                if(Engine.lastUsedProgram!==Meshes[i].material){
+                    Engine.lastUsedProgram=Meshes[i].material
+                    D.useProgram(Materials[Meshes[i].material].program)
+                    if(!Engine.uniformedPrograms[Meshes[i].material]){
+                        Engine.uniformedPrograms[Meshes[i].material]=true
+                        D.setUniform('viewMatrix',Engine.camera.transform.viewMatrix)
+                        D.setUniform('camPos',Engine.camera.transform.matrix.slice(12,15))
+                        D.setUniform('time',[Engine.time])
+                        if(Engine.dynamicLightsAmount)
+                            D.setUniform('dynamicLightInfoArray',dynamicLightUniformArray)
+                        D.activeTextures(Materials[Meshes[i].material].activeTexturesArr)
+                    }
+                    Scripts[Meshes[i].script].OnMaterialSet(Meshes[i],Engine)
+                }
+                D.setUniform('modelMatrix',Meshes[i].transform.matrix)
+                Scripts[Meshes[i].script].OnBeforeRender(Meshes[i],Engine)
+                D.renderMesh(Meshes[i].mesh)
+                Scripts[Meshes[i].script].OnAfterRender(Meshes[i],Engine)
+            }
+        }
+        
+        Engine.ComputeTransformations=computeTransformations
+        
+        for(let i in AllObjects)InitalizeTransform(AllObjects[i])
+        
+        computeTransformations(true)
+        
+        for(let i in Data._assets)
+            if(Data._assets[i].type==='material'){
+                Data._assets[i].name=i
+                InitalizeMaterial(Data._assets[i])
+            }
+            
+        for(let i in Meshes)InitalizeMesh(Meshes[i])
+        
+        for(let i in AllObjects)Scripts[AllObjects[i].script].OnCreate(AllObjects[i],Engine)
+        
+        renderShadowMaps(true)
+        
+        function LOOP(now){
+            Engine.time+=(Engine.deltaTime=Math.max(Math.min((now-Engine.then)*Engine.timeMultiplier,Engine.maxDeltaTime),Engine.minDeltaTime))
+            
+            for(let i in Pipeline)
+                Pipeline[i].run()
+            
+            window.parent.raf=window.requestAnimationFrame(LOOP)
+            Engine.then=now
+        }
+        if(window.parent.raf)window.cancelAnimationFrame(window.parent.raf)
+        Engine.then=window.performance.now()
+        LOOP(Engine.then)
+        //<script>
+    }catch(e){console.error(e)}})(PROGRAM_DIV)},0)</script></body></html>
